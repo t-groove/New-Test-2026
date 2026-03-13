@@ -48,14 +48,6 @@ function normalizeHeader(h: string): string {
   return h.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-const HEADER_KEYWORDS = ["date", "amount", "description", "memo", "credit", "debit", "payee", "name", "details", "merchant", "withdrawal", "deposit", "balance", "type", "category", "transaction"];
-
-function looksLikeHeaderRow(cols: string[]): boolean {
-  return cols.some((col) => {
-    const normalized = col.toLowerCase().replace(/[^a-z]/g, "");
-    return HEADER_KEYWORDS.some((kw) => normalized === kw || normalized.includes(kw));
-  });
-}
 
 export function detectColumns(headers: string[]): ColumnMap {
   const normalized = headers.map(normalizeHeader);
@@ -137,40 +129,47 @@ export function parseCSV(csvString: string): ParseResult {
     return { transactions, errors: [{ row: "", reason: "File appears empty or has no data rows" }] };
   }
 
-  // Find the header row — skip lines that are clearly not headers (e.g. bank account info rows)
-  let headerLineIdx = 0;
-  let columnMap: ColumnMap | null = null;
-
-  for (let i = 0; i < Math.min(lines.length, 10); i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const headers = parseCSVLine(line);
-    const map = detectColumns(headers);
-    if (map.dateIdx !== -1 && map.descriptionIdx !== -1) {
-      headerLineIdx = i;
-      columnMap = map;
-      break;
-    }
+  // Check first non-empty line to determine format
+  const firstNonEmptyLine = lines.find(l => l.trim());
+  if (!firstNonEmptyLine) {
+    return { transactions, errors: [{ row: "", reason: "File is empty" }] };
   }
 
-  // If no header row found, check if the first non-empty line looks like Wells Fargo format
-  // (no header row, columns: date, amount, *, empty, description)
+  const firstCols = parseCSVLine(firstNonEmptyLine.trim());
+
+  // If first field looks like a date, it's a no-header format (Wells Fargo)
+  const firstFieldLooksLikeDate = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(
+    firstCols[0]?.replace(/"/g, "").trim() ?? ""
+  );
+
   let dataStartIdx: number;
+  let columnMap: ColumnMap | null = null;
   let isWellsFargoFormat = false;
 
-  if (!columnMap) {
-    const firstDataLine = lines.find((l) => l.trim());
-    const firstCols = firstDataLine ? parseCSVLine(firstDataLine.trim()) : [];
-    if (!looksLikeHeaderRow(firstCols) && firstCols.length >= 5) {
-      isWellsFargoFormat = true;
-      dataStartIdx = 0;
-    } else {
+  if (firstFieldLooksLikeDate && firstCols.length >= 5) {
+    // No-header format: date, amount, *, empty, description
+    isWellsFargoFormat = true;
+    dataStartIdx = 0;
+  } else {
+    // Try to find a header row in first 10 lines
+    let headerLineIdx = 0;
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const headers = parseCSVLine(line);
+      const map = detectColumns(headers);
+      if (map.dateIdx !== -1 && map.descriptionIdx !== -1) {
+        headerLineIdx = i;
+        columnMap = map;
+        break;
+      }
+    }
+    if (!columnMap) {
       return {
         transactions,
         errors: [{ row: lines[0], reason: "Could not detect required columns (date, description)" }],
       };
     }
-  } else {
     dataStartIdx = headerLineIdx + 1;
   }
 
