@@ -84,11 +84,15 @@ function UploadPanel({ onImportSuccess }: UploadPanelProps) {
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
+      console.log("CSV first 200 chars:", text.slice(0, 200));
       const result = parseCSV(text);
+      console.log("Parse result:", result.transactions.length, "transactions,", result.errors.length, "errors");
+      console.log("First error if any:", result.errors[0]);
       if (result.transactions.length === 0) {
-        setParseError(
-          "Could not parse this CSV. Please check the format."
-        );
+        const errorMsg = result.errors.length > 0
+          ? `Parse error: ${result.errors[0].reason}`
+          : "Could not parse this CSV. Please check the format.";
+        setParseError(errorMsg);
         setPreview(null);
       } else {
         setPreview(result.transactions);
