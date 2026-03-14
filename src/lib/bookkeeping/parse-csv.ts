@@ -49,14 +49,14 @@ function normalizeHeader(h: string): string {
 }
 
 
-export function detectColumns(headers: string[]): ColumnMap {
+export function detectColumns(headers: string[], dataRows?: string[][]): ColumnMap {
   const normalized = headers.map(normalizeHeader);
 
   const dateIdx = normalized.findIndex((h) =>
     ["date", "transactiondate", "postdate", "posteddate", "settledate"].includes(h)
   );
 
-  const descriptionIdx = normalized.findIndex((h) =>
+  let descriptionIdx = normalized.findIndex((h) =>
     [
       "description",
       "memo",
@@ -67,8 +67,26 @@ export function detectColumns(headers: string[]): ColumnMap {
       "narrative",
       "transactiondescription",
       "extendeddescription",
+      "reference",
+      "notes",
+      "particulars",
+      "remarks",
     ].includes(h)
   );
+
+  // If the detected description column is empty in the first 3 data rows,
+  // fall back to a "reference" column if one exists (e.g. Relay CSV format).
+  if (descriptionIdx !== -1 && dataRows && dataRows.length >= 3) {
+    const first3Empty = dataRows.slice(0, 3).every(
+      (row) => !(row[descriptionIdx] ?? "").trim()
+    );
+    if (first3Empty) {
+      const refIdx = normalized.findIndex((h) => h === "reference");
+      if (refIdx !== -1) {
+        descriptionIdx = refIdx;
+      }
+    }
+  }
 
   const amountIdx = normalized.findIndex((h) =>
     ["amount", "transactionamount", "amt"].includes(h)
@@ -157,7 +175,11 @@ export function parseCSV(csvString: string): ParseResult {
       const line = lines[i].trim();
       if (!line) continue;
       const headers = parseCSVLine(line);
-      const map = detectColumns(headers);
+      const dataRows = lines
+        .slice(i + 1, i + 4)
+        .filter((l) => l.trim())
+        .map((l) => parseCSVLine(l));
+      const map = detectColumns(headers, dataRows);
       if (map.dateIdx !== -1 && map.descriptionIdx !== -1) {
         headerLineIdx = i;
         columnMap = map;
