@@ -29,7 +29,6 @@ import {
   Download,
   X,
   BookOpen,
-  CheckSquare,
 } from "lucide-react";
 
 const PAGE_SIZE = 50;
@@ -699,6 +698,50 @@ export default function BookkeepingClient({
           />
         </div>
 
+        {/* Bulk action bar */}
+        <div
+          className={`mb-5 overflow-hidden transition-all duration-200 ease-in-out ${
+            selectedIds.size > 0
+              ? "max-h-20 opacity-100"
+              : "max-h-0 opacity-0 pointer-events-none"
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-3 bg-[#4F7FFF]/10 border border-[#4F7FFF]/30 rounded-lg px-4 py-3 w-full">
+            <span className="text-sm font-medium text-[#E8ECF4]">
+              {selectedIds.size} transaction{selectedIds.size !== 1 ? "s" : ""} selected
+            </span>
+            {bankAccounts.length > 0 && (
+              <>
+                <select
+                  value={bulkAccountId}
+                  onChange={(e) => setBulkAccountId(e.target.value)}
+                  className="bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#4F7FFF]"
+                >
+                  <option value="">Assign to account…</option>
+                  {bankAccounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.bank_name} — {acc.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleBulkAssign}
+                  disabled={!bulkAccountId || isBulkAssigning}
+                  className="px-3 py-1.5 bg-[#4F7FFF] hover:bg-[#3D6FEF] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {isBulkAssigning ? "Assigning…" : "Assign"}
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="ml-auto text-sm text-[#6B7A99] hover:text-[#E8ECF4] transition-colors"
+            >
+              Deselect all
+            </button>
+          </div>
+        </div>
+
         {/* Summary Bar */}
         {transactions.length > 0 && (
           <div className="grid grid-cols-3 gap-3 mb-5">
@@ -907,45 +950,6 @@ export default function BookkeepingClient({
                 </tbody>
               </table>
             </div>
-
-            {/* Bulk action bar */}
-            {selectedIds.size > 0 && (
-              <div className="mt-4 flex flex-wrap items-center gap-3 bg-[#1E2A45] rounded-lg px-4 py-3">
-                <CheckSquare size={16} className="text-[#4F7FFF] flex-shrink-0" />
-                <span className="text-sm text-[#E8ECF4] font-medium">
-                  {selectedIds.size} selected
-                </span>
-                {bankAccounts.length > 0 && (
-                  <>
-                    <select
-                      value={bulkAccountId}
-                      onChange={(e) => setBulkAccountId(e.target.value)}
-                      className="bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#4F7FFF]"
-                    >
-                      <option value="">Assign to account…</option>
-                      {bankAccounts.map((acc) => (
-                        <option key={acc.id} value={acc.id}>
-                          {acc.bank_name} — {acc.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleBulkAssign}
-                      disabled={!bulkAccountId || isBulkAssigning}
-                      className="px-3 py-1.5 bg-[#4F7FFF] hover:bg-[#3D6FEF] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
-                    >
-                      {isBulkAssigning ? "Assigning…" : "Assign"}
-                    </button>
-                  </>
-                )}
-                <button
-                  onClick={() => setSelectedIds(new Set())}
-                  className="ml-auto text-sm text-[#6B7A99] hover:text-[#E8ECF4] transition-colors"
-                >
-                  Clear selection
-                </button>
-              </div>
-            )}
 
             {/* Pagination */}
             {totalPages > 1 && (
