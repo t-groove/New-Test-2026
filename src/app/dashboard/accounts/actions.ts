@@ -7,7 +7,7 @@ export interface BankAccount {
   user_id: string;
   name: string;
   bank_name: string;
-  account_type: "checking" | "savings" | "credit_card" | "other";
+  account_type: "checking" | "savings" | "credit_card" | "cash" | "other";
   last_four: string | null;
   is_active: boolean;
   created_at: string;

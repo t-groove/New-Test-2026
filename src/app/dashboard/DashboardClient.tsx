@@ -42,6 +42,7 @@ const TYPE_LABELS: Record<string, string> = {
   checking: "Checking",
   savings: "Savings",
   credit_card: "Credit Card",
+  cash: "Cash",
   other: "Other",
 };
 
@@ -49,6 +50,7 @@ const TYPE_COLORS: Record<string, string> = {
   checking: "bg-[#4F7FFF]/10 text-[#4F7FFF]",
   savings: "bg-[#22C55E]/10 text-[#22C55E]",
   credit_card: "bg-purple-500/10 text-purple-400",
+  cash: "bg-[#F59E0B]/10 text-[#F59E0B]",
   other: "bg-[#6B7A99]/20 text-[#6B7A99]",
 };
 

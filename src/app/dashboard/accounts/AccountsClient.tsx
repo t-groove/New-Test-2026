@@ -15,6 +15,7 @@ const TYPE_LABELS: Record<string, string> = {
   checking: "Checking",
   savings: "Savings",
   credit_card: "Credit Card",
+  cash: "Cash",
   other: "Other",
 };
 
@@ -22,6 +23,7 @@ const TYPE_COLORS: Record<string, string> = {
   checking: "bg-[#4F7FFF]/10 text-[#4F7FFF]",
   savings: "bg-[#22C55E]/10 text-[#22C55E]",
   credit_card: "bg-purple-500/10 text-purple-400",
+  cash: "bg-[#F59E0B]/10 text-[#F59E0B]",
   other: "bg-[#6B7A99]/20 text-[#6B7A99]",
 };
 
@@ -37,7 +39,7 @@ function formatCurrency(amount: number): string {
 interface FormState {
   name: string;
   bank_name: string;
-  account_type: "checking" | "savings" | "credit_card" | "other";
+  account_type: "checking" | "savings" | "credit_card" | "cash" | "other";
   last_four: string;
 }
 
@@ -227,6 +229,7 @@ export default function AccountsClient({ initialAccounts }: Props) {
                 <option value="checking">Checking</option>
                 <option value="savings">Savings</option>
                 <option value="credit_card">Credit Card</option>
+                <option value="cash">Cash</option>
                 <option value="other">Other</option>
               </select>
             </div>

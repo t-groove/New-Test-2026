@@ -138,6 +138,7 @@ function MiniAccountForm({ onSave, onCancel }: MiniAccountFormProps) {
           <option value="checking">Checking</option>
           <option value="savings">Savings</option>
           <option value="credit_card">Credit Card</option>
+          <option value="cash">Cash</option>
           <option value="other">Other</option>
         </select>
         <input
