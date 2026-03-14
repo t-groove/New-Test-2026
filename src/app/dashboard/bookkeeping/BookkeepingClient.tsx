@@ -455,6 +455,8 @@ export default function BookkeepingClient({
   const [assigningTxId, setAssigningTxId] = useState<string | null>(null);
   const [bulkAccountId, setBulkAccountId] = useState("");
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+  const [bulkCategoryId, setBulkCategoryId] = useState("");
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
@@ -566,22 +568,60 @@ export default function BookkeepingClient({
     }
   };
 
-  const handleBulkAssign = async () => {
-    if (!bulkAccountId || selectedIds.size === 0) return;
+  const handleBulkAssign = async (accountId: string) => {
+    if (!accountId || selectedIds.size === 0) return;
     setIsBulkAssigning(true);
     const ids = Array.from(selectedIds);
-    const result = await assignTransactionsToAccount(bulkAccountId, ids);
+    const result = await assignTransactionsToAccount(accountId, ids);
     if (result.success) {
       setTransactions((prev) =>
-        prev.map((t) => (selectedIds.has(t.id) ? { ...t, account_id: bulkAccountId } : t))
+        prev.map((t) => (selectedIds.has(t.id) ? { ...t, account_id: accountId } : t))
       );
-      setSelectedIds(new Set());
       setBulkAccountId("");
       showToast(`${ids.length} transaction${ids.length !== 1 ? "s" : ""} assigned`, "success");
     } else {
       showToast("Failed to assign accounts", "error");
     }
     setIsBulkAssigning(false);
+  };
+
+  const handleBulkCategoryChange = async (category: string) => {
+    if (!category || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    // Optimistic update
+    setTransactions((prev) =>
+      prev.map((t) => (selectedIds.has(t.id) ? { ...t, category } : t))
+    );
+    setBulkCategoryId("");
+    await Promise.all(ids.map((id) => updateTransactionCategory(id, category)));
+    showToast(
+      `Updated category for ${ids.length} transaction${ids.length !== 1 ? "s" : ""}`,
+      "success"
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setIsBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    const results = await Promise.all(ids.map((id) => deleteTransaction(id)));
+    const successIds = ids.filter((_, i) => results[i].success);
+    setTransactions((prev) => prev.filter((t) => !successIds.includes(t.id)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      successIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    if (successIds.length > 0) {
+      showToast(
+        `Deleted ${successIds.length} transaction${successIds.length !== 1 ? "s" : ""}`,
+        "success"
+      );
+    }
+    if (successIds.length < ids.length) {
+      showToast("Some transactions could not be deleted", "error");
+    }
+    setIsBulkDeleting(false);
   };
 
   const handleExportCSV = () => {
@@ -723,43 +763,86 @@ export default function BookkeepingClient({
         <div
           className={`mb-5 overflow-hidden transition-all duration-200 ease-in-out ${
             selectedIds.size > 0
-              ? "max-h-20 opacity-100"
+              ? "max-h-40 opacity-100"
               : "max-h-0 opacity-0 pointer-events-none"
           }`}
         >
-          <div className="flex flex-wrap items-center gap-3 bg-[#4F7FFF]/10 border border-[#4F7FFF]/30 rounded-lg px-4 py-3 w-full">
-            <span className="text-sm font-medium text-[#E8ECF4]">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-[#4F7FFF]/10 border border-[#4F7FFF]/30 rounded-lg px-4 py-3 w-full">
+            {/* Count */}
+            <span className="text-sm font-medium text-[#E8ECF4] flex-shrink-0">
               {selectedIds.size} transaction{selectedIds.size !== 1 ? "s" : ""} selected
             </span>
-            {bankAccounts.length > 0 && (
-              <>
+
+            {/* Right-side actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:ml-auto">
+              {/* Assign account */}
+              {bankAccounts.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#6B7A99] flex-shrink-0">Assign account:</span>
+                  <select
+                    value={bulkAccountId}
+                    disabled={isBulkAssigning}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBulkAccountId(val);
+                      if (val) handleBulkAssign(val);
+                    }}
+                    className="w-full sm:w-auto bg-[#0A0F1E] border border-[#4F7FFF]/30 text-[#E8ECF4] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#4F7FFF] disabled:opacity-60"
+                  >
+                    <option value="">{isBulkAssigning ? "Assigning…" : "Change account…"}</option>
+                    {bankAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.bank_name} — {acc.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Assign category */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#6B7A99] flex-shrink-0">Assign category:</span>
                 <select
-                  value={bulkAccountId}
-                  onChange={(e) => setBulkAccountId(e.target.value)}
-                  className="bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#4F7FFF]"
+                  value={bulkCategoryId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setBulkCategoryId(val);
+                    if (val) handleBulkCategoryChange(val);
+                  }}
+                  className="w-full sm:w-auto bg-[#0A0F1E] border border-[#4F7FFF]/30 text-[#E8ECF4] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#4F7FFF]"
                 >
-                  <option value="">Assign to account…</option>
-                  {bankAccounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.bank_name} — {acc.name}
-                    </option>
-                  ))}
+                  <option value="">Change category…</option>
+                  <option value="Uncategorized">Uncategorized</option>
+                  <optgroup label="Income">
+                    {INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                  <optgroup label="Expenses">
+                    {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                  <optgroup label="Transfers (excluded from P&amp;L)">
+                    {TRANSFER_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
                 </select>
-                <button
-                  onClick={handleBulkAssign}
-                  disabled={!bulkAccountId || isBulkAssigning}
-                  className="px-3 py-1.5 bg-[#4F7FFF] hover:bg-[#3D6FEF] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  {isBulkAssigning ? "Assigning…" : "Assign"}
-                </button>
-              </>
-            )}
-            <button
-              onClick={() => setSelectedIds(new Set())}
-              className="ml-auto text-sm text-[#6B7A99] hover:text-[#E8ECF4] transition-colors"
-            >
-              Deselect all
-            </button>
+              </div>
+
+              {/* Deselect all */}
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] transition-colors flex-shrink-0"
+              >
+                Deselect all
+              </button>
+
+              {/* Bulk delete */}
+              <button
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="p-1.5 rounded text-[#6B7A99] hover:text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors disabled:opacity-40 flex-shrink-0"
+                title="Delete selected transactions"
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
           </div>
         </div>
 
