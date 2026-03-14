@@ -8,7 +8,7 @@ import { getBankAccounts } from "../accounts/actions";
 export default async function BookkeepingPage({
   searchParams,
 }: {
-  searchParams: { account?: string; category?: string };
+  searchParams: Promise<{ account?: string; category?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -18,6 +18,8 @@ export default async function BookkeepingPage({
   if (!user) {
     redirect("/sign-in");
   }
+
+  const params = await searchParams;
 
   const [transactions, bankAccounts] = await Promise.all([
     getTransactions(),
@@ -40,8 +42,8 @@ export default async function BookkeepingPage({
           <BookkeepingClient
             initialTransactions={transactions}
             initialBankAccounts={bankAccounts}
-            initialAccountFilter={searchParams.account}
-            initialCategoryFilter={searchParams.category}
+            initialAccountFilter={params.account}
+            initialCategoryFilter={params.category}
           />
         </div>
       </main>
