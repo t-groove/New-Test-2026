@@ -13,6 +13,9 @@ import {
   getTransactions,
   updateTransactionCategory,
   deleteTransaction,
+  createTransaction,
+  updateTransactionDescription,
+  updateTransaction,
 } from "./actions";
 import type { Transaction } from "./actions";
 import {
@@ -29,6 +32,8 @@ import {
   Download,
   X,
   BookOpen,
+  Plus,
+  Pencil,
 } from "lucide-react";
 
 const PAGE_SIZE = 50;
@@ -473,6 +478,35 @@ export default function BookkeepingClient({
   const [bulkCategoryId, setBulkCategoryId] = useState("");
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
+  // Create transaction form
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newTxForm, setNewTxForm] = useState({
+    date: new Date().toISOString().split("T")[0],
+    description: "",
+    amount: "",
+    type: "expense" as "income" | "expense",
+    category: "Uncategorized",
+    account_id: "",
+  });
+  const [newTxError, setNewTxError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Inline description editing
+  const [editingDescriptionId, setEditingDescriptionId] = useState<string | null>(null);
+  const [editingDescriptionValue, setEditingDescriptionValue] = useState("");
+  const descEditCancelledRef = useRef(false);
+
+  // Inline cell editing (amount / date)
+  const [editingCell, setEditingCell] = useState<{
+    id: string;
+    field: "amount" | "date";
+    value: string;
+  } | null>(null);
+  const cellEditCancelledRef = useRef(false);
+
+  // Success flash cell id
+  const [successCellId, setSuccessCellId] = useState<string | null>(null);
+
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
@@ -565,6 +599,7 @@ export default function BookkeepingClient({
         next.delete(id);
         return next;
       });
+      showToast("Transaction deleted", "success");
     } else {
       showToast("Failed to delete transaction", "error");
     }
@@ -657,6 +692,103 @@ export default function BookkeepingClient({
     URL.revokeObjectURL(url);
   };
 
+  const handleCreateTransaction = async () => {
+    if (!newTxForm.description.trim()) {
+      setNewTxError("Description is required.");
+      return;
+    }
+    const amt = Number(newTxForm.amount);
+    if (!newTxForm.amount || isNaN(amt) || amt <= 0) {
+      setNewTxError("Amount must be greater than 0.");
+      return;
+    }
+    setNewTxError(null);
+    setIsCreating(true);
+    const result = await createTransaction({
+      date: newTxForm.date,
+      description: newTxForm.description.trim(),
+      amount: amt,
+      type: newTxForm.type,
+      category: newTxForm.category,
+      account_id: newTxForm.account_id || undefined,
+    });
+    if (result.success) {
+      setTransactions((prev) => {
+        const next = [...prev, result.transaction];
+        next.sort((a, b) => b.date.localeCompare(a.date));
+        return next;
+      });
+      showToast("Transaction added", "success");
+      setShowAddForm(false);
+      setNewTxForm({
+        date: new Date().toISOString().split("T")[0],
+        description: "",
+        amount: "",
+        type: "expense",
+        category: "Uncategorized",
+        account_id: "",
+      });
+    } else {
+      setNewTxError(result.error ?? "Failed to create transaction.");
+    }
+    setIsCreating(false);
+  };
+
+  const handleUpdateDescription = async (id: string, value: string) => {
+    const trimmed = value.trim();
+    setEditingDescriptionId(null);
+    if (!trimmed) return;
+    const original = transactions.find((t) => t.id === id)?.description ?? "";
+    if (trimmed === original) return;
+    setTransactions((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, description: trimmed } : t))
+    );
+    const result = await updateTransactionDescription(id, trimmed);
+    if (result.success) {
+      setSuccessCellId(`${id}-description`);
+      setTimeout(() => setSuccessCellId(null), 1000);
+    } else {
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, description: original } : t))
+      );
+      showToast("Failed to update description", "error");
+    }
+  };
+
+  const handleUpdateField = async (
+    id: string,
+    field: "amount" | "date",
+    value: string
+  ) => {
+    setEditingCell(null);
+    if (!value.trim()) return;
+    const tx = transactions.find((t) => t.id === id);
+    if (!tx) return;
+    const updateData: Partial<{ amount: number; date: string }> = {};
+    if (field === "amount") {
+      const num = Number(value);
+      if (isNaN(num) || num <= 0) return;
+      if (num === tx.amount) return;
+      updateData.amount = num;
+    } else {
+      if (value === tx.date) return;
+      updateData.date = value;
+    }
+    setTransactions((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, ...updateData } : t));
+      if (field === "date") next.sort((a, b) => b.date.localeCompare(a.date));
+      return next;
+    });
+    const result = await updateTransaction(id, updateData);
+    if (result.success) {
+      setSuccessCellId(`${id}-${field}`);
+      setTimeout(() => setSuccessCellId(null), 1000);
+    } else {
+      setTransactions((prev) => prev.map((t) => (t.id === id ? tx : t)));
+      showToast("Failed to update transaction", "error");
+    }
+  };
+
   const inputCls =
     "bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4F7FFF] placeholder:text-[#6B7A99]";
 
@@ -678,14 +810,23 @@ export default function BookkeepingClient({
               {filtered.length}
             </span>
           </div>
-          <button
-            onClick={handleExportCSV}
-            disabled={filtered.length === 0}
-            className="flex items-center gap-2 px-4 py-2 border border-[#1E2A45] text-[#6B7A99] hover:text-[#E8ECF4] hover:border-[#4F7FFF]/50 rounded-lg text-sm transition-colors disabled:opacity-40"
-          >
-            <Download size={15} />
-            Export CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAddForm((v) => !v)}
+              className="flex items-center gap-2 px-4 py-2 border border-[#4F7FFF] text-[#4F7FFF] hover:bg-[#4F7FFF]/10 rounded-lg text-sm font-medium transition-colors"
+            >
+              <Plus size={15} />
+              Add Transaction
+            </button>
+            <button
+              onClick={handleExportCSV}
+              disabled={filtered.length === 0}
+              className="flex items-center gap-2 px-4 py-2 border border-[#1E2A45] text-[#6B7A99] hover:text-[#E8ECF4] hover:border-[#4F7FFF]/50 rounded-lg text-sm transition-colors disabled:opacity-40"
+            >
+              <Download size={15} />
+              Export CSV
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -859,6 +1000,111 @@ export default function BookkeepingClient({
           </div>
         </div>
 
+        {/* Create Transaction Form */}
+        {showAddForm && (
+          <div className="mb-5 bg-[#0A0F1E] border border-[#1E2A45] rounded-xl p-5">
+            <h3 className="font-syne text-sm font-semibold text-[#E8ECF4] mb-4">New Transaction</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+              <div>
+                <label className="text-xs text-[#6B7A99] mb-1 block">Date</label>
+                <input
+                  type="date"
+                  value={newTxForm.date}
+                  onChange={(e) => setNewTxForm((f) => ({ ...f, date: e.target.value }))}
+                  className={inputCls + " w-full"}
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <label className="text-xs text-[#6B7A99] mb-1 block">Description *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Office supplies from Staples"
+                  value={newTxForm.description}
+                  onChange={(e) => setNewTxForm((f) => ({ ...f, description: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleCreateTransaction(); }}
+                  className={inputCls + " w-full"}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[#6B7A99] mb-1 block">Amount *</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={newTxForm.amount}
+                  onChange={(e) => setNewTxForm((f) => ({ ...f, amount: e.target.value }))}
+                  className={inputCls + " w-full"}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[#6B7A99] mb-1 block">Type</label>
+                <select
+                  value={newTxForm.type}
+                  onChange={(e) =>
+                    setNewTxForm((f) => ({ ...f, type: e.target.value as "income" | "expense" }))
+                  }
+                  className={inputCls + " w-full"}
+                >
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-[#6B7A99] mb-1 block">Category</label>
+                <select
+                  value={newTxForm.category}
+                  onChange={(e) => setNewTxForm((f) => ({ ...f, category: e.target.value }))}
+                  className={inputCls + " w-full"}
+                >
+                  <option value="Uncategorized">Uncategorized</option>
+                  <optgroup label="Income">
+                    {INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                  <optgroup label="Expenses">
+                    {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                  <optgroup label="Transfers">
+                    {TRANSFER_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                </select>
+              </div>
+              {bankAccounts.length > 0 && (
+                <div>
+                  <label className="text-xs text-[#6B7A99] mb-1 block">Account</label>
+                  <select
+                    value={newTxForm.account_id}
+                    onChange={(e) => setNewTxForm((f) => ({ ...f, account_id: e.target.value }))}
+                    className={inputCls + " w-full"}
+                  >
+                    <option value="">No account</option>
+                    {bankAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>{accountLabel(acc)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            {newTxError && <p className="text-sm text-[#EF4444] mb-3">{newTxError}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={handleCreateTransaction}
+                disabled={isCreating}
+                className="flex items-center gap-2 px-4 py-2 bg-[#4F7FFF] hover:bg-[#3D6FEF] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Plus size={14} />
+                {isCreating ? "Saving…" : "Save Transaction"}
+              </button>
+              <button
+                onClick={() => { setShowAddForm(false); setNewTxError(null); }}
+                className="px-4 py-2 border border-[#1E2A45] text-[#6B7A99] hover:text-[#E8ECF4] text-sm rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Empty State */}
         {transactions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -908,7 +1154,7 @@ export default function BookkeepingClient({
                     return (
                       <tr
                         key={t.id}
-                        className={`border-b border-[#1E2A45] last:border-0 transition-colors ${
+                        className={`group border-b border-[#1E2A45] last:border-0 transition-colors ${
                           selectedIds.has(t.id)
                             ? "bg-[#4F7FFF]/5"
                             : "hover:bg-[#1E2A45]/20"
@@ -925,8 +1171,40 @@ export default function BookkeepingClient({
                         </td>
 
                         {/* Date */}
-                        <td className="px-4 py-3 text-[#E8ECF4] whitespace-nowrap">
-                          {formatDate(t.date)}
+                        <td className={`px-4 py-3 whitespace-nowrap ${successCellId === `${t.id}-date` ? "ring-1 ring-[#22C55E] rounded" : ""}`}>
+                          {editingCell?.id === t.id && editingCell?.field === "date" ? (
+                            <input
+                              autoFocus
+                              type="date"
+                              value={editingCell.value}
+                              onChange={(e) =>
+                                setEditingCell((c) => c ? { ...c, value: e.target.value } : null)
+                              }
+                              onBlur={(e) => {
+                                if (cellEditCancelledRef.current) {
+                                  cellEditCancelledRef.current = false;
+                                  return;
+                                }
+                                handleUpdateField(t.id, "date", e.currentTarget.value);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                                if (e.key === "Escape") {
+                                  cellEditCancelledRef.current = true;
+                                  setEditingCell(null);
+                                }
+                              }}
+                              className="bg-[#0A0F1E] border border-[#4F7FFF] rounded px-2 py-1 text-sm text-[#E8ECF4] focus:outline-none"
+                            />
+                          ) : (
+                            <span
+                              className="text-[#E8ECF4] cursor-pointer hover:underline"
+                              onClick={() => setEditingCell({ id: t.id, field: "date", value: t.date })}
+                              title="Click to edit date"
+                            >
+                              {formatDate(t.date)}
+                            </span>
+                          )}
                         </td>
 
                         {/* Account */}
@@ -977,13 +1255,55 @@ export default function BookkeepingClient({
                         </td>
 
                         {/* Description */}
-                        <td
-                          className="px-4 py-3 text-[#E8ECF4] max-w-[180px] truncate"
-                          title={t.description}
-                        >
-                          {t.description.length > 35
-                            ? t.description.slice(0, 35) + "…"
-                            : t.description}
+                        <td className={`px-4 py-3 max-w-[180px] ${successCellId === `${t.id}-description` ? "ring-1 ring-[#22C55E] rounded" : ""}`}>
+                          {editingDescriptionId === t.id ? (
+                            <input
+                              autoFocus
+                              type="text"
+                              value={editingDescriptionValue}
+                              onChange={(e) => setEditingDescriptionValue(e.target.value)}
+                              onBlur={(e) => {
+                                if (descEditCancelledRef.current) {
+                                  descEditCancelledRef.current = false;
+                                  return;
+                                }
+                                handleUpdateDescription(t.id, e.currentTarget.value);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                                if (e.key === "Escape") {
+                                  descEditCancelledRef.current = true;
+                                  setEditingDescriptionId(null);
+                                }
+                              }}
+                              className="bg-[#0A0F1E] border border-[#4F7FFF] rounded px-2 py-1 text-sm text-[#E8ECF4] w-full focus:outline-none"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="text-[#E8ECF4] truncate cursor-default"
+                                title={t.description}
+                                onDoubleClick={() => {
+                                  setEditingDescriptionId(t.id);
+                                  setEditingDescriptionValue(t.description);
+                                }}
+                              >
+                                {t.description.length > 35
+                                  ? t.description.slice(0, 35) + "…"
+                                  : t.description}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setEditingDescriptionId(t.id);
+                                  setEditingDescriptionValue(t.description);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 text-[#6B7A99] hover:text-[#4F7FFF] transition-opacity flex-shrink-0"
+                                title="Edit description"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                            </div>
+                          )}
                         </td>
 
                         {/* Category */}
@@ -1020,13 +1340,47 @@ export default function BookkeepingClient({
                         </td>
 
                         {/* Amount */}
-                        <td
-                          className={`px-4 py-3 text-right font-medium whitespace-nowrap ${
-                            t.type === "income" ? "text-[#22C55E]" : "text-[#EF4444]"
-                          }`}
-                        >
-                          {t.type === "income" ? "+" : "-"}
-                          {formatCurrency(Number(t.amount))}
+                        <td className={`px-4 py-3 text-right font-medium whitespace-nowrap ${successCellId === `${t.id}-amount` ? "ring-1 ring-[#22C55E] rounded" : ""}`}>
+                          {editingCell?.id === t.id && editingCell?.field === "amount" ? (
+                            <input
+                              autoFocus
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              value={editingCell.value}
+                              onChange={(e) =>
+                                setEditingCell((c) => c ? { ...c, value: e.target.value } : null)
+                              }
+                              onBlur={(e) => {
+                                if (cellEditCancelledRef.current) {
+                                  cellEditCancelledRef.current = false;
+                                  return;
+                                }
+                                handleUpdateField(t.id, "amount", e.currentTarget.value);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                                if (e.key === "Escape") {
+                                  cellEditCancelledRef.current = true;
+                                  setEditingCell(null);
+                                }
+                              }}
+                              className="bg-[#0A0F1E] border border-[#4F7FFF] rounded px-2 py-1 text-sm text-[#E8ECF4] w-24 text-right focus:outline-none"
+                            />
+                          ) : (
+                            <span
+                              className={`cursor-pointer hover:underline ${
+                                t.type === "income" ? "text-[#22C55E]" : "text-[#EF4444]"
+                              }`}
+                              onClick={() =>
+                                setEditingCell({ id: t.id, field: "amount", value: String(t.amount) })
+                              }
+                              title="Click to edit amount"
+                            >
+                              {t.type === "income" ? "+" : "-"}
+                              {formatCurrency(Number(t.amount))}
+                            </span>
+                          )}
                         </td>
 
                         {/* Delete */}

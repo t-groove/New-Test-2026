@@ -147,3 +147,96 @@ export async function deleteTransaction(
     return { success: false, error: String(err) };
   }
 }
+
+export async function createTransaction(data: {
+  date: string;
+  description: string;
+  amount: number;
+  type: "income" | "expense";
+  category: string;
+  account_id?: string;
+}): Promise<{ success: true; transaction: Transaction } | { success: false; error: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: "Not authenticated" };
+
+    const { data: row, error } = await supabase
+      .from("transactions")
+      .insert({
+        user_id: user.id,
+        date: data.date,
+        description: data.description,
+        amount: data.amount,
+        type: data.type,
+        category: data.category,
+        account_id: data.account_id ?? null,
+        raw_csv_row: null,
+      })
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, transaction: row as Transaction };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+export async function updateTransactionDescription(
+  id: string,
+  description: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: "Not authenticated" };
+
+    const { error } = await supabase
+      .from("transactions")
+      .update({ description })
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+export async function updateTransaction(
+  id: string,
+  data: Partial<{
+    description: string;
+    amount: number;
+    date: string;
+    type: "income" | "expense";
+  }>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: "Not authenticated" };
+
+    const { error } = await supabase
+      .from("transactions")
+      .update(data)
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
