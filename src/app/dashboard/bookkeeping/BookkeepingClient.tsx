@@ -578,6 +578,7 @@ export default function BookkeepingClient({
         prev.map((t) => (selectedIds.has(t.id) ? { ...t, account_id: accountId } : t))
       );
       setBulkAccountId("");
+      setSelectedIds(new Set());
       showToast(`${ids.length} transaction${ids.length !== 1 ? "s" : ""} assigned`, "success");
     } else {
       showToast("Failed to assign accounts", "error");
@@ -593,6 +594,7 @@ export default function BookkeepingClient({
       prev.map((t) => (selectedIds.has(t.id) ? { ...t, category } : t))
     );
     setBulkCategoryId("");
+    setSelectedIds(new Set());
     await Promise.all(ids.map((id) => updateTransactionCategory(id, category)));
     showToast(
       `Updated category for ${ids.length} transaction${ids.length !== 1 ? "s" : ""}`,
@@ -607,11 +609,7 @@ export default function BookkeepingClient({
     const results = await Promise.all(ids.map((id) => deleteTransaction(id)));
     const successIds = ids.filter((_, i) => results[i].success);
     setTransactions((prev) => prev.filter((t) => !successIds.includes(t.id)));
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      successIds.forEach((id) => next.delete(id));
-      return next;
-    });
+    setSelectedIds(new Set());
     if (successIds.length > 0) {
       showToast(
         `Deleted ${successIds.length} transaction${successIds.length !== 1 ? "s" : ""}`,
@@ -680,18 +678,18 @@ export default function BookkeepingClient({
           <input
             type="date"
             value={filterStart}
-            onChange={(e) => { setFilterStart(e.target.value); setPage(1); }}
+            onChange={(e) => { setFilterStart(e.target.value); setPage(1); setSelectedIds(new Set()); }}
             className={inputCls}
           />
           <input
             type="date"
             value={filterEnd}
-            onChange={(e) => { setFilterEnd(e.target.value); setPage(1); }}
+            onChange={(e) => { setFilterEnd(e.target.value); setPage(1); setSelectedIds(new Set()); }}
             className={inputCls}
           />
           <select
             value={filterType}
-            onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
+            onChange={(e) => { setFilterType(e.target.value); setPage(1); setSelectedIds(new Set()); }}
             className={inputCls}
           >
             <option value="all">All Types</option>
@@ -700,7 +698,7 @@ export default function BookkeepingClient({
           </select>
           <select
             value={filterCategory}
-            onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
+            onChange={(e) => { setFilterCategory(e.target.value); setPage(1); setSelectedIds(new Set()); }}
             className={inputCls}
           >
             <option value="all">All Categories</option>
@@ -732,7 +730,7 @@ export default function BookkeepingClient({
           <input
             type="text"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); setSelectedIds(new Set()); }}
             placeholder="Search description..."
             className={`${inputCls} min-w-[180px]`}
           />
