@@ -25,12 +25,35 @@ export interface ReportTotals {
   profitMargin: number;
 }
 
+export interface StatementRow {
+  category: string;
+  monthly: number[];
+  total: number;
+}
+
+export interface StatementData {
+  months: string[];
+  incomeRows: StatementRow[];
+  totalIncome: number[];
+  totalIncomeAnnual: number;
+  expenseRows: StatementRow[];
+  totalExpenses: number[];
+  totalExpensesAnnual: number;
+  grossProfit: number[];
+  grossProfitAnnual: number;
+  netIncome: number[];
+  netIncomeAnnual: number;
+  dateRange: string;
+  companyLabel: string;
+}
+
 export interface ReportData {
   monthly: MonthlyData[];
   expensesByCategory: CategoryData[];
   incomeByCategory: CategoryData[];
   totals: ReportTotals;
   availableYears: number[];
+  statement: StatementData;
 }
 
 export async function getReportData(year: number, accountId?: string): Promise<ReportData> {
@@ -39,12 +62,31 @@ export async function getReportData(year: number, accountId?: string): Promise<R
     data: { user },
   } = await supabase.auth.getUser();
 
+  function emptyStatement(year: number): StatementData {
+    return {
+      months: MONTH_NAMES,
+      incomeRows: [],
+      totalIncome: new Array(12).fill(0),
+      totalIncomeAnnual: 0,
+      expenseRows: [],
+      totalExpenses: new Array(12).fill(0),
+      totalExpensesAnnual: 0,
+      grossProfit: new Array(12).fill(0),
+      grossProfitAnnual: 0,
+      netIncome: new Array(12).fill(0),
+      netIncomeAnnual: 0,
+      dateRange: `January – December ${year}`,
+      companyLabel: "Profit and Loss",
+    };
+  }
+
   const empty: ReportData = {
     monthly: MONTH_NAMES.map((month) => ({ month, income: 0, expenses: 0, profit: 0 })),
     expensesByCategory: [],
     incomeByCategory: [],
     totals: { income: 0, expenses: 0, profit: 0, profitMargin: NaN },
     availableYears: [],
+    statement: emptyStatement(year),
   };
 
   if (!user) return empty;
@@ -88,15 +130,22 @@ export async function getReportData(year: number, accountId?: string): Promise<R
   const monthlyExpenses = new Array(12).fill(0);
   const expenseCategoryMap = new Map<string, number>();
   const incomeCategoryMap = new Map<string, number>();
+  // Monthly-per-category maps for statement
+  const incomeCategoryMonthly = new Map<string, number[]>();
+  const expenseCategoryMonthly = new Map<string, number[]>();
 
   for (const t of plTransactions) {
     const monthIndex = parseInt(t.date.substring(5, 7), 10) - 1;
     if (t.type === "income") {
       monthlyIncome[monthIndex] += t.amount;
       incomeCategoryMap.set(t.category, (incomeCategoryMap.get(t.category) ?? 0) + t.amount);
+      if (!incomeCategoryMonthly.has(t.category)) incomeCategoryMonthly.set(t.category, new Array(12).fill(0));
+      incomeCategoryMonthly.get(t.category)![monthIndex] += t.amount;
     } else {
       monthlyExpenses[monthIndex] += t.amount;
       expenseCategoryMap.set(t.category, (expenseCategoryMap.get(t.category) ?? 0) + t.amount);
+      if (!expenseCategoryMonthly.has(t.category)) expenseCategoryMonthly.set(t.category, new Array(12).fill(0));
+      expenseCategoryMonthly.get(t.category)![monthIndex] += t.amount;
     }
   }
 
@@ -130,11 +179,42 @@ export async function getReportData(year: number, accountId?: string): Promise<R
     .filter((c) => c.amount > 0)
     .sort((a, b) => b.amount - a.amount);
 
+  // Build statement rows
+  const incomeRows: StatementRow[] = Array.from(incomeCategoryMonthly.entries())
+    .map(([category, monthly]) => ({ category, monthly, total: monthly.reduce((s, v) => s + v, 0) }))
+    .filter((r) => r.total !== 0)
+    .sort((a, b) => b.total - a.total);
+
+  const expenseRows: StatementRow[] = Array.from(expenseCategoryMonthly.entries())
+    .map(([category, monthly]) => ({ category, monthly, total: monthly.reduce((s, v) => s + v, 0) }))
+    .filter((r) => r.total !== 0)
+    .sort((a, b) => b.total - a.total);
+
+  const grossProfit = monthlyIncome.map((inc, i) => inc - monthlyExpenses[i]);
+  const grossProfitAnnual = grossProfit.reduce((s, v) => s + v, 0);
+
+  const statement: StatementData = {
+    months: MONTH_NAMES,
+    incomeRows,
+    totalIncome: monthlyIncome,
+    totalIncomeAnnual: totalIncome,
+    expenseRows,
+    totalExpenses: monthlyExpenses,
+    totalExpensesAnnual: totalExpenses,
+    grossProfit,
+    grossProfitAnnual,
+    netIncome: grossProfit,
+    netIncomeAnnual: grossProfitAnnual,
+    dateRange: `January – December ${year}`,
+    companyLabel: "Profit and Loss",
+  };
+
   return {
     monthly,
     expensesByCategory,
     incomeByCategory,
     totals: { income: totalIncome, expenses: totalExpenses, profit, profitMargin },
     availableYears,
+    statement,
   };
 }

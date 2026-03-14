@@ -23,6 +23,7 @@ import { TrendingUp, TrendingDown, Printer, FileDown } from "lucide-react";
 import { getReportData } from "./actions";
 import type { ReportData, CategoryData } from "./actions";
 import type { BankAccount } from "../accounts/actions";
+import PLStatement from "./PLStatement";
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -242,6 +243,7 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [isPending, startTransition] = useTransition();
   const [showComingSoon, setShowComingSoon] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "statement">("overview");
 
   const { monthly, expensesByCategory, incomeByCategory, totals, availableYears } = data;
   const hasData = totals.income > 0 || totals.expenses > 0;
@@ -342,8 +344,42 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
         </div>
       </div>
 
-      {/* ── Empty state ───────────────────────────────────────────────────── */}
-      {!hasData ? (
+      {/* ── Tab switcher ──────────────────────────────────────────────────── */}
+      <div className="flex gap-2 mb-6 no-print">
+        <button
+          onClick={() => setActiveTab("overview")}
+          className={`px-5 py-2 rounded-lg text-sm transition-colors ${
+            activeTab === "overview"
+              ? "bg-[#111827] border border-[#1E2A45] text-[#E8ECF4] font-medium"
+              : "text-[#6B7A99] hover:text-[#E8ECF4]"
+          }`}
+        >
+          Overview
+        </button>
+        <button
+          onClick={() => setActiveTab("statement")}
+          className={`px-5 py-2 rounded-lg text-sm transition-colors ${
+            activeTab === "statement"
+              ? "bg-[#111827] border border-[#1E2A45] text-[#E8ECF4] font-medium"
+              : "text-[#6B7A99] hover:text-[#E8ECF4]"
+          }`}
+        >
+          P&amp;L Statement
+        </button>
+      </div>
+
+      {/* ── P&L Statement tab ─────────────────────────────────────────────── */}
+      {activeTab === "statement" && (
+        <PLStatement
+          statement={data.statement}
+          year={year}
+          accounts={initialAccounts}
+          selectedAccountId={selectedAccountId}
+        />
+      )}
+
+      {/* ── Overview tab ──────────────────────────────────────────────────── */}
+      {activeTab === "overview" && (!hasData ? (
         <div className="bg-[#111827] border border-[#1E2A45] rounded-xl p-12 text-center">
           <p className="text-[#E8ECF4] text-lg mb-2">
             No transactions found for {year}.
@@ -591,7 +627,7 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
             </div>
           </div>
         </>
-      )}
+      ))}
     </div>
   );
 }
