@@ -1,57 +1,86 @@
-import DashboardNavbar from "@/components/dashboard-navbar";
-import { signOutAction } from "@/app/actions";
-import { InfoIcon, UserCircle } from "lucide-react";
 import { redirect } from "next/navigation";
 import { createClient } from "../../../supabase/server";
-import { Button } from "@/components/ui/button";
+import DashboardNavbar from "@/components/dashboard-navbar";
+import DashboardClient from "./DashboardClient";
+import type { BankAccount } from "./accounts/actions";
 
-export default async function Dashboard() {
+const TRANSFER_CATS = [
+  "Owner Contribution",
+  "Owner Draw",
+  "Transfer Between Accounts",
+];
+
+export default async function DashboardPage() {
   const supabase = await createClient();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return redirect("/sign-in");
+    redirect("/sign-in");
   }
+
+  const currentYear = new Date().getFullYear();
+  const yearStart = `${currentYear}-01-01`;
+  const today = new Date().toISOString().split("T")[0];
+
+  const [ytdTransactions, bankAccountsResult, uncategorizedResult] =
+    await Promise.all([
+      supabase
+        .from("transactions")
+        .select("amount, type, category, date")
+        .eq("user_id", user.id)
+        .gte("date", yearStart)
+        .lte("date", today),
+
+      supabase
+        .from("bank_accounts")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .order("created_at", { ascending: true }),
+
+      supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("category", "Uncategorized"),
+    ]);
+
+  const plTransactions = (ytdTransactions.data ?? []).filter(
+    (t) => !TRANSFER_CATS.includes(t.category)
+  );
+
+  const ytdIncome = plTransactions
+    .filter((t) => t.type === "income")
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const ytdExpenses = plTransactions
+    .filter((t) => t.type === "expense")
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const ytdProfit = ytdIncome - ytdExpenses;
+  const profitMargin = ytdIncome > 0 ? (ytdProfit / ytdIncome) * 100 : 0;
+
+  const bankAccounts = (bankAccountsResult.data ?? []) as BankAccount[];
+  const uncategorizedCount = uncategorizedResult.count ?? 0;
+  const userName = (user.email ?? "").split("@")[0];
 
   return (
     <>
       <DashboardNavbar />
-      <main className="w-full bg-background min-h-screen">
-        <div className="container mx-auto px-4 py-8 flex flex-col gap-8">
-          {/* Header Section */}
-          <header className="flex flex-col gap-4">
-            <h1 className="font-syne text-3xl font-bold text-foreground">Dashboard</h1>
-            <div className="bg-secondary/50 text-sm p-3 px-4 rounded-lg text-muted-foreground flex gap-2 items-center border border-border">
-              <InfoIcon size={14} />
-              <span>This is a protected page — only visible to authenticated users.</span>
-            </div>
-          </header>
-
-          {/* User Profile Section */}
-          <section className="bg-card rounded-xl p-6 border border-border shadow-sm">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <UserCircle size={48} className="text-primary" />
-                <div>
-                  <h2 className="font-syne font-semibold text-xl text-foreground">Signed in as</h2>
-                  <p className="text-sm text-muted-foreground">{user.email}</p>
-                </div>
-              </div>
-              <form action={signOutAction}>
-                <Button type="submit" variant="outline" className="border-border text-foreground hover:bg-secondary">
-                  Sign out
-                </Button>
-              </form>
-            </div>
-            <div className="bg-muted/30 rounded-lg p-4 overflow-hidden border border-border">
-              <pre className="text-xs font-mono max-h-48 overflow-auto text-muted-foreground">
-                {JSON.stringify(user, null, 2)}
-              </pre>
-            </div>
-          </section>
+      <main className="w-full bg-[#0A0F1E] min-h-screen">
+        <div className="container mx-auto px-4 py-8">
+          <DashboardClient
+            ytdIncome={ytdIncome}
+            ytdExpenses={ytdExpenses}
+            ytdProfit={ytdProfit}
+            profitMargin={profitMargin}
+            bankAccounts={bankAccounts}
+            uncategorizedCount={uncategorizedCount}
+            userName={userName}
+            currentYear={currentYear}
+          />
         </div>
       </main>
     </>
