@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "../../../../supabase/server";
+import { TRANSFER_CATEGORIES } from "@/lib/bookkeeping/categories";
 
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -72,12 +73,17 @@ export async function getReportData(year: number): Promise<ReportData> {
     return { ...empty, availableYears };
   }
 
+  // Exclude transfer categories from P&L calculations
+  const plTransactions = transactions.filter(
+    (t) => !TRANSFER_CATEGORIES.includes(t.category as (typeof TRANSFER_CATEGORIES)[number])
+  );
+
   const monthlyIncome = new Array(12).fill(0);
   const monthlyExpenses = new Array(12).fill(0);
   const expenseCategoryMap = new Map<string, number>();
   const incomeCategoryMap = new Map<string, number>();
 
-  for (const t of transactions) {
+  for (const t of plTransactions) {
     // Parse month index from date string to avoid timezone issues
     const monthIndex = parseInt(t.date.substring(5, 7), 10) - 1;
     if (t.type === "income") {

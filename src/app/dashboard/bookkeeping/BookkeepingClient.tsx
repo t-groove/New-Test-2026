@@ -3,7 +3,11 @@
 import { useState, useRef, useCallback, useMemo, useTransition } from "react";
 import { parseCSV } from "@/lib/bookkeeping/parse-csv";
 import type { ParsedTransaction } from "@/lib/bookkeeping/parse-csv";
-import { ALL_CATEGORIES } from "@/lib/bookkeeping/categories";
+import {
+  INCOME_CATEGORIES,
+  EXPENSE_CATEGORIES,
+  TRANSFER_CATEGORIES,
+} from "@/lib/bookkeeping/categories";
 import {
   uploadTransactions,
   getTransactions,
@@ -447,11 +451,21 @@ export default function BookkeepingClient({
           >
             <option value="all">All Categories</option>
             <option value="Uncategorized">Uncategorized</option>
-            {ALL_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
+            <optgroup label="Income">
+              {INCOME_CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Expenses">
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Transfers (excluded from P&amp;L)">
+              {TRANSFER_CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </optgroup>
           </select>
           <input
             type="text"
@@ -558,11 +572,21 @@ export default function BookkeepingClient({
                           className="bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#4F7FFF] max-w-[160px]"
                         >
                           <option value="Uncategorized">Uncategorized</option>
-                          {ALL_CATEGORIES.map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
+                          <optgroup label="Income">
+                            {INCOME_CATEGORIES.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Expenses">
+                            {EXPENSE_CATEGORIES.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Transfers (excluded from P&amp;L)">
+                            {TRANSFER_CATEGORIES.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </optgroup>
                         </select>
                       </td>
                       <td className="px-4 py-3">

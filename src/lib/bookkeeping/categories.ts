@@ -23,4 +23,14 @@ export const EXPENSE_CATEGORIES = [
   "Other Expense",
 ] as const;
 
-export const ALL_CATEGORIES = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+export const TRANSFER_CATEGORIES = [
+  "Owner Contribution",
+  "Owner Draw",
+  "Transfer Between Accounts",
+] as const;
+
+export const ALL_CATEGORIES = [
+  ...INCOME_CATEGORIES,
+  ...EXPENSE_CATEGORIES,
+  ...TRANSFER_CATEGORIES,
+] as const;
