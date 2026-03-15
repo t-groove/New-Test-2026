@@ -293,16 +293,21 @@ export async function removeTeamMember(
     } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Not authenticated" };
 
-    // Cannot remove the owner
-    const { data: target } = await supabase
+    // Fetch all active members to check the last-owner constraint
+    const { data: allMembers } = await supabase
       .from("business_members")
-      .select("role")
+      .select("user_id, role")
       .eq("business_id", businessId)
-      .eq("user_id", userId)
-      .maybeSingle();
+      .eq("is_active", true);
 
-    if (target?.role === "owner") {
-      return { success: false, error: "Cannot remove the business owner" };
+    const memberToRemove = allMembers?.find((m) => m.user_id === userId);
+    const ownerCount = allMembers?.filter((m) => m.role === "owner").length ?? 0;
+
+    if (memberToRemove?.role === "owner" && ownerCount <= 1) {
+      return {
+        success: false,
+        error: "Cannot remove the last owner of a business.",
+      };
     }
 
     const { error } = await supabase
@@ -326,8 +331,6 @@ export async function updateMemberRole(
   role: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (role === "owner") return { success: false, error: "Cannot assign owner role" };
-
     const supabase = await createClient();
     const {
       data: { user },
@@ -346,16 +349,20 @@ export async function updateMemberRole(
       return { success: false, error: "Only owners can change roles" };
     }
 
-    // Cannot change the owner's own role
-    const { data: target } = await supabase
-      .from("business_members")
-      .select("role")
-      .eq("business_id", businessId)
-      .eq("user_id", userId)
-      .maybeSingle();
+    // Guard: can't downgrade last owner
+    if (role !== "owner") {
+      const { data: allMembers } = await supabase
+        .from("business_members")
+        .select("user_id, role")
+        .eq("business_id", businessId)
+        .eq("is_active", true);
 
-    if (target?.role === "owner") {
-      return { success: false, error: "Cannot change the owner's role" };
+      const owners = allMembers?.filter((m) => m.role === "owner") ?? [];
+      const thisMember = allMembers?.find((m) => m.user_id === userId);
+
+      if (thisMember?.role === "owner" && owners.length <= 1) {
+        return { success: false, error: "Cannot change role — at least one owner required." };
+      }
     }
 
     const { error } = await supabase

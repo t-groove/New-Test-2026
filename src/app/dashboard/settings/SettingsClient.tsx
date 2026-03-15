@@ -11,12 +11,12 @@ import {
   deleteBusiness,
 } from "@/lib/business/actions";
 import type { Business, TeamMember, BusinessInvitation } from "@/lib/business/actions";
-import { Trash2, UserMinus, AlertTriangle, X } from "lucide-react";
+import { Trash2, UserMinus, AlertTriangle, X, Crown } from "lucide-react";
 
 // ── Role config ────────────────────────────────────────────────────────────────
 
 const ROLE_BADGE: Record<string, string> = {
-  owner:      "bg-[#4F7FFF]/10 text-[#4F7FFF]",
+  owner:      "bg-[#4F7FFF]/10 text-[#4F7FFF] border border-[#4F7FFF]/20",
   accountant: "bg-[#A855F7]/10 text-[#A855F7]",
   bookkeeper: "bg-[#22C55E]/10 text-[#22C55E]",
   readonly:   "bg-[#6B7A99]/10 text-[#6B7A99]",
@@ -36,7 +36,7 @@ const ROLE_LABEL: Record<string, string> = {
   readonly:   "Read-only",
 };
 
-const ASSIGNABLE_ROLES = ["accountant", "bookkeeper", "readonly"];
+const ASSIGNABLE_ROLES = ["owner", "accountant", "bookkeeper", "readonly"];
 const ENTITY_TYPES = [
   "LLC", "S-Corp", "C-Corp", "Sole Proprietor",
   "Partnership", "Non-Profit", "Other",
@@ -143,6 +143,12 @@ export default function SettingsClient({
   }
 
   function handleRemoveMember(userId: string) {
+    const memberToRemove = members.find((m) => m.user_id === userId);
+    const ownerCount = members.filter((m) => m.role === "owner").length;
+    if (memberToRemove?.role === "owner" && ownerCount <= 1) {
+      showToast("Cannot remove the last owner of a business.", "error");
+      return;
+    }
     startMemberTransition(async () => {
       const result = await removeTeamMember(business.id, userId);
       if (result.success) {
@@ -155,6 +161,14 @@ export default function SettingsClient({
   }
 
   function handleRoleChange(userId: string, role: string) {
+    if (role !== "owner") {
+      const thisMember = members.find((m) => m.user_id === userId);
+      const ownerCount = members.filter((m) => m.role === "owner").length;
+      if (thisMember?.role === "owner" && ownerCount <= 1) {
+        showToast("Cannot change role — at least one owner required.", "error");
+        return;
+      }
+    }
     startMemberTransition(async () => {
       const result = await updateMemberRole(business.id, userId, role);
       if (result.success) {
@@ -434,10 +448,11 @@ export default function SettingsClient({
                         <td className="px-4 py-3">
                           <div>
                             <span
-                              className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                                 ROLE_BADGE[member.role] ?? ROLE_BADGE.readonly
                               }`}
                             >
+                              {member.role === "owner" && <Crown size={10} />}
                               {ROLE_LABEL[member.role] ?? member.role}
                             </span>
                             <p className="text-xs text-[#6B7A99] mt-0.5">
@@ -454,7 +469,9 @@ export default function SettingsClient({
                         </td>
                         {isOwner && (
                           <td className="px-6 py-3 text-right">
-                            {member.role !== "owner" && (
+                            {member.user_id === currentUserId ? (
+                              <span className="text-xs text-[#6B7A99] italic">You</span>
+                            ) : (
                               <div className="flex items-center justify-end gap-2">
                                 <select
                                   value={member.role}
@@ -479,9 +496,6 @@ export default function SettingsClient({
                                   <UserMinus size={14} />
                                 </button>
                               </div>
-                            )}
-                            {member.role === "owner" && member.user_id === currentUserId && (
-                              <span className="text-xs text-[#6B7A99] italic">You</span>
                             )}
                           </td>
                         )}
