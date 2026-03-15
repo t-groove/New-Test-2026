@@ -270,49 +270,63 @@ function UploadPanel({ bankAccounts, onImportSuccess, onAccountCreated }: Upload
 
   return (
     <div className="bg-[#111827] border border-[#1E2A45] rounded-xl p-6 mb-6">
-      <h2 className="font-syne text-xl font-bold text-[#E8ECF4] mb-1">
-        Import Bank Transactions
-      </h2>
-      <p className="text-sm text-[#6B7A99] mb-5">
-        Upload a CSV export from your bank. Works with Chase, Bank of America,
-        Wells Fargo, and most US banks.
-      </p>
-
       {!preview ? (
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center cursor-pointer transition-colors ${
-            isDragging
-              ? "border-[#4F7FFF] bg-[#4F7FFF]/5"
-              : "border-[#1E2A45] bg-[#0A0F1E] hover:border-[#4F7FFF]/50"
-          }`}
-        >
-          <CloudUpload
-            size={40}
-            className={`mb-3 ${isDragging ? "text-[#4F7FFF]" : "text-[#6B7A99]"}`}
-          />
-          <p className="text-[#E8ECF4] font-medium mb-1">Drag your CSV file here</p>
-          <p className="text-sm text-[#6B7A99]">or click to browse</p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFile(file);
-              e.target.value = "";
-            }}
-          />
+        <div className="flex flex-col sm:flex-row gap-6 items-start">
+          {/* Left: text content */}
+          <div className="flex-1">
+            <h2 className="font-syne text-xl font-bold text-[#E8ECF4] mb-1">
+              Import Bank Transactions
+            </h2>
+            <p className="text-sm text-[#6B7A99]">
+              Upload a CSV export from your bank. Works with Chase, Bank of America,
+              Wells Fargo, and most US banks.
+            </p>
+            {parseError && (
+              <p className="mt-3 text-sm text-[#EF4444]">{parseError}</p>
+            )}
+          </div>
+
+          {/* Right: compact upload zone */}
+          <div className="w-full sm:w-64 shrink-0">
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer transition-colors max-h-40 ${
+                isDragging
+                  ? "border-[#4F7FFF] bg-[#4F7FFF]/5"
+                  : "border-[#1E2A45] bg-[#0A0F1E] hover:border-[#4F7FFF]/50"
+              }`}
+            >
+              <CloudUpload
+                size={24}
+                className={`mb-2 ${isDragging ? "text-[#4F7FFF]" : "text-[#6B7A99]"}`}
+              />
+              <p className="text-[#E8ECF4] font-medium text-sm mb-0.5">Drag CSV here</p>
+              <p className="text-xs text-[#6B7A99]">or click to browse</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFile(file);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+          </div>
         </div>
       ) : (
         <div>
+          <h2 className="font-syne text-xl font-bold text-[#E8ECF4] mb-1">
+            Import Bank Transactions
+          </h2>
           <p className="text-sm text-[#6B7A99] mb-3">
             Found{" "}
             <span className="text-[#E8ECF4] font-semibold">{preview.length}</span>{" "}
@@ -434,10 +448,6 @@ function UploadPanel({ bankAccounts, onImportSuccess, onAccountCreated }: Upload
             </button>
           </div>
         </div>
-      )}
-
-      {parseError && (
-        <p className="mt-3 text-sm text-[#EF4444]">{parseError}</p>
       )}
 
       {toast && (
@@ -842,32 +852,50 @@ export default function BookkeepingClient({
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-3 mb-5">
+        <div className="flex flex-wrap gap-2 mb-5">
+          {/* 1. Date range */}
           <input
             type="date"
             value={filterStart}
+            placeholder="From"
             onChange={(e) => { setFilterStart(e.target.value); setPage(1); setSelectedIds(new Set()); }}
-            className={inputCls}
+            className={`${inputCls} min-w-[130px]`}
           />
           <input
             type="date"
             value={filterEnd}
+            placeholder="To"
             onChange={(e) => { setFilterEnd(e.target.value); setPage(1); setSelectedIds(new Set()); }}
-            className={inputCls}
+            className={`${inputCls} min-w-[130px]`}
           />
-          <select
-            value={filterType}
-            onChange={(e) => { setFilterType(e.target.value); setPage(1); setSelectedIds(new Set()); }}
-            className={inputCls}
-          >
-            <option value="all">All Types</option>
-            <option value="income">Income</option>
-            <option value="expense">Expense</option>
-          </select>
+          {/* 2. Account */}
+          {bankAccounts.length > 0 && (
+            <select
+              value={filterAccount}
+              onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
+              className={`${inputCls} min-w-[160px]`}
+            >
+              <option value="all">All Accounts</option>
+              {bankAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.bank_name} — {acc.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {/* 3. Description search */}
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); setSelectedIds(new Set()); }}
+            placeholder="Search description..."
+            className={`${inputCls} min-w-[180px] flex-1`}
+          />
+          {/* 4. Category */}
           <select
             value={filterCategory}
             onChange={(e) => { setFilterCategory(e.target.value); setPage(1); setSelectedIds(new Set()); }}
-            className={inputCls}
+            className={`${inputCls} min-w-[160px]`}
           >
             <option value="all">All Categories</option>
             <option value="Uncategorized">Uncategorized</option>
@@ -890,27 +918,16 @@ export default function BookkeepingClient({
               {TRANSFER_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </optgroup>
           </select>
-          {bankAccounts.length > 0 && (
-            <select
-              value={filterAccount}
-              onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
-              className={inputCls}
-            >
-              <option value="all">All Accounts</option>
-              {bankAccounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.bank_name} — {acc.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); setSelectedIds(new Set()); }}
-            placeholder="Search description..."
-            className={`${inputCls} min-w-[180px]`}
-          />
+          {/* 5. Type */}
+          <select
+            value={filterType}
+            onChange={(e) => { setFilterType(e.target.value); setPage(1); setSelectedIds(new Set()); }}
+            className={`${inputCls} min-w-[120px]`}
+          >
+            <option value="all">All Types</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
         </div>
 
         {/* Summary Bar */}
