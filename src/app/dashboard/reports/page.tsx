@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "../../../../supabase/server";
 import DashboardNavbar from "@/components/dashboard-navbar";
 import ReportsClient from "./ReportsClient";
-import { getReportData } from "./actions";
+import { getReportData, getBalanceSheetData } from "./actions";
 import { getBankAccounts } from "../accounts/actions";
 
 export default async function ReportsPage() {
@@ -15,9 +15,11 @@ export default async function ReportsPage() {
     redirect("/sign-in");
   }
 
-  const [data, bankAccounts] = await Promise.all([
+  const today = new Date().toISOString().split("T")[0];
+  const [data, bankAccounts, balanceData] = await Promise.all([
     getReportData(2026),
     getBankAccounts(),
+    getBalanceSheetData(today),
   ]);
 
   return (
@@ -25,7 +27,7 @@ export default async function ReportsPage() {
       <DashboardNavbar />
       <main className="w-full bg-[#0A0F1E] min-h-screen">
         <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-12 py-8">
-          <ReportsClient initialData={data} initialYear={2026} initialAccounts={bankAccounts} />
+          <ReportsClient initialData={data} initialYear={2026} initialAccounts={bankAccounts} initialBalanceData={balanceData} />
         </div>
       </main>
     </>

@@ -20,10 +20,11 @@ import {
   Cell,
 } from "recharts";
 import { TrendingUp, TrendingDown, Printer, FileDown } from "lucide-react";
-import { getReportData } from "./actions";
-import type { ReportData, CategoryData } from "./actions";
+import { getReportData, getBalanceSheetData } from "./actions";
+import type { ReportData, CategoryData, BalanceSheetData } from "./actions";
 import type { BankAccount } from "../accounts/actions";
 import PLStatement from "./PLStatement";
+import BalanceSheet from "./BalanceSheet";
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -235,15 +236,20 @@ interface Props {
   initialData: ReportData;
   initialYear: number;
   initialAccounts: BankAccount[];
+  initialBalanceData: BalanceSheetData;
 }
 
-export default function ReportsClient({ initialData, initialYear, initialAccounts }: Props) {
+export default function ReportsClient({ initialData, initialYear, initialAccounts, initialBalanceData }: Props) {
   const [data, setData] = useState<ReportData>(initialData);
   const [year, setYear] = useState(initialYear);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [isPending, startTransition] = useTransition();
   const [showComingSoon, setShowComingSoon] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "statement">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "statement" | "balance">("overview");
+  const [balanceAsOfDate, setBalanceAsOfDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [balanceData, setBalanceData] = useState<BalanceSheetData>(initialBalanceData);
 
   const { monthly, expensesByCategory, incomeByCategory, totals, availableYears } = data;
   const hasData = totals.income > 0 || totals.expenses > 0;
@@ -268,6 +274,14 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
   function handleExportPDF() {
     setShowComingSoon(true);
     setTimeout(() => setShowComingSoon(false), 3000);
+  }
+
+  function handleBalanceDateChange(newDate: string) {
+    setBalanceAsOfDate(newDate);
+    startTransition(async () => {
+      const fresh = await getBalanceSheetData(newDate);
+      setBalanceData(fresh);
+    });
   }
 
   const monthlyWithMargin = monthly.map((m) => ({
@@ -366,6 +380,16 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
         >
           P&amp;L Statement
         </button>
+        <button
+          onClick={() => setActiveTab("balance")}
+          className={`px-5 py-2 rounded-lg text-sm transition-colors ${
+            activeTab === "balance"
+              ? "bg-[#111827] border border-[#1E2A45] text-[#E8ECF4] font-medium"
+              : "text-[#6B7A99] hover:text-[#E8ECF4]"
+          }`}
+        >
+          Balance Sheet
+        </button>
       </div>
 
       {/* ── P&L Statement tab ─────────────────────────────────────────────── */}
@@ -375,6 +399,15 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
           year={year}
           accounts={initialAccounts}
           selectedAccountId={selectedAccountId}
+        />
+      )}
+
+      {/* ── Balance Sheet tab ──────────────────────────────────────────────── */}
+      {activeTab === "balance" && (
+        <BalanceSheet
+          data={balanceData}
+          asOfDate={balanceAsOfDate}
+          onDateChange={handleBalanceDateChange}
         />
       )}
 

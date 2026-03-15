@@ -89,6 +89,162 @@ function getPlAmount(
   return { incomeEffect: 0, expenseEffect: 0 };
 }
 
+export interface BalanceSheetItem {
+  label: string;
+  amount: number;
+  isContra: boolean;
+}
+
+export interface BalanceSheetData {
+  asOfDate: string;
+  // Assets
+  fixedAssets: BalanceSheetItem[];
+  totalFixedAssets: number;
+  totalAssets: number;
+  // Liabilities
+  currentLiabilities: BalanceSheetItem[];
+  totalCurrentLiabilities: number;
+  totalLiabilities: number;
+  // Equity
+  equityItems: BalanceSheetItem[];
+  retainedEarnings: number;
+  totalEquity: number;
+  // Grand total
+  totalLiabilitiesAndEquity: number;
+}
+
+export async function getBalanceSheetData(asOfDate: string): Promise<BalanceSheetData> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const empty: BalanceSheetData = {
+    asOfDate,
+    fixedAssets: [],
+    totalFixedAssets: 0,
+    totalAssets: 0,
+    currentLiabilities: [],
+    totalCurrentLiabilities: 0,
+    totalLiabilities: 0,
+    equityItems: [],
+    retainedEarnings: 0,
+    totalEquity: 0,
+    totalLiabilitiesAndEquity: 0,
+  };
+
+  if (!user) return empty;
+
+  const { data: transactions } = await supabase
+    .from("transactions")
+    .select("date, amount, type, category, account_type")
+    .eq("user_id", user.id)
+    .lte("date", asOfDate);
+
+  if (!transactions || transactions.length === 0) return empty;
+
+  // Aggregate by category
+  const catMap = new Map<string, { income: number; expense: number; accountType: string }>();
+  for (const t of transactions) {
+    const existing = catMap.get(t.category);
+    const amt = Number(t.amount);
+    if (existing) {
+      if (t.type === "income") existing.income += amt;
+      else existing.expense += amt;
+    } else {
+      catMap.set(t.category, {
+        income: t.type === "income" ? amt : 0,
+        expense: t.type === "expense" ? amt : 0,
+        accountType: t.account_type,
+      });
+    }
+  }
+
+  // Assets: expense = acquisition (adds), income = disposal (subtracts)
+  const ASSET_CATS = ["Equipment", "Real Estate", "Vehicles"];
+  const fixedAssets: BalanceSheetItem[] = [];
+  const seenAssets = new Set<string>();
+  for (const cat of ASSET_CATS) {
+    const d = catMap.get(cat);
+    if (!d) continue;
+    seenAssets.add(cat);
+    const amount = d.expense - d.income;
+    if (amount !== 0) fixedAssets.push({ label: cat, amount, isContra: false });
+  }
+  for (const [cat, d] of Array.from(catMap.entries())) {
+    if (d.accountType === "Asset" && !seenAssets.has(cat)) {
+      const amount = d.expense - d.income;
+      if (amount !== 0) fixedAssets.push({ label: cat, amount, isContra: false });
+    }
+  }
+
+  const totalFixedAssets = fixedAssets.reduce((s, i) => s + i.amount, 0);
+  const totalAssets = totalFixedAssets;
+
+  // Liabilities: income = borrowed (adds), expense = repaid (subtracts)
+  const LIABILITY_CATS = ["Line of Credit", "Loans"];
+  const currentLiabilities: BalanceSheetItem[] = [];
+  const seenLiabilities = new Set<string>();
+  for (const cat of LIABILITY_CATS) {
+    const d = catMap.get(cat);
+    if (!d) continue;
+    seenLiabilities.add(cat);
+    const amount = d.income - d.expense;
+    if (amount !== 0) currentLiabilities.push({ label: cat, amount, isContra: false });
+  }
+  for (const [cat, d] of Array.from(catMap.entries())) {
+    if (d.accountType === "Liability" && !seenLiabilities.has(cat)) {
+      const amount = d.income - d.expense;
+      if (amount !== 0) currentLiabilities.push({ label: cat, amount, isContra: false });
+    }
+  }
+
+  const totalCurrentLiabilities = currentLiabilities.reduce((s, i) => s + i.amount, 0);
+  const totalLiabilities = totalCurrentLiabilities;
+
+  // Equity
+  const equityItems: BalanceSheetItem[] = [];
+  const contribD = catMap.get("Owner Contributions");
+  const contributions = contribD ? contribD.income - contribD.expense : 0;
+  if (contributions !== 0) {
+    equityItems.push({ label: "Owner Contributions", amount: contributions, isContra: false });
+  }
+  const drawD = catMap.get("Owner Draw");
+  const draws = drawD ? drawD.expense - drawD.income : 0;
+  if (draws !== 0) {
+    equityItems.push({ label: "Owner Draw", amount: -draws, isContra: true });
+  }
+
+  // Retained Earnings = cumulative P&L net income up to asOfDate
+  let plIncome = 0;
+  let plExpenses = 0;
+  for (const [, d] of Array.from(catMap.entries())) {
+    if (d.accountType === "Income") {
+      plIncome += d.income - d.expense;
+    } else if (d.accountType === "Expense") {
+      plExpenses += d.expense - d.income;
+    }
+  }
+  const retainedEarnings = plIncome - plExpenses;
+
+  const totalEquity = equityItems.reduce((s, i) => s + i.amount, 0) + retainedEarnings;
+  const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
+
+  return {
+    asOfDate,
+    fixedAssets,
+    totalFixedAssets,
+    totalAssets,
+    currentLiabilities,
+    totalCurrentLiabilities,
+    totalLiabilities,
+    equityItems,
+    retainedEarnings,
+    totalEquity,
+    totalLiabilitiesAndEquity,
+  };
+}
+
 export async function getReportData(year: number, accountId?: string): Promise<ReportData> {
   const supabase = await createClient();
   const {
