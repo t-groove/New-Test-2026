@@ -233,6 +233,28 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
     }
   }
 
+  // Accumulated depreciation from journal entries
+  const { data: jeRows } = await supabase
+    .from("journal_entries")
+    .select("id")
+    .eq("user_id", user.id)
+    .lte("date", asOfDate);
+  const jeIds = (jeRows ?? []).map((r: { id: string }) => r.id);
+  if (jeIds.length > 0) {
+    const { data: depLines } = await supabase
+      .from("journal_entry_lines")
+      .select("credit")
+      .in("journal_entry_id", jeIds)
+      .eq("account_name", "Accumulated Depreciation");
+    const accumDep = (depLines ?? []).reduce(
+      (sum: number, l: { credit: number }) => sum + Number(l.credit),
+      0
+    );
+    if (accumDep > 0) {
+      fixedAssets.push({ label: "Accumulated Depreciation", amount: -accumDep, isContra: true });
+    }
+  }
+
   const totalFixedAssets = fixedAssets.reduce((s, i) => s + i.amount, 0);
   const totalAssets = totalCurrentAssets + totalFixedAssets;
 
