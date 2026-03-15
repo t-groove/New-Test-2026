@@ -165,6 +165,8 @@ export async function createBusiness(data: {
     } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Not authenticated" };
 
+    // Step 1: Create the business record.
+    // The "owner full access" RLS policy allows this because owner_id = auth.uid().
     const { data: business, error: bizError } = await supabase
       .from("businesses")
       .insert({
@@ -179,7 +181,9 @@ export async function createBusiness(data: {
       return { success: false, error: bizError?.message ?? "Failed to create business" };
     }
 
-    // Auto-add creator as owner member
+    // Step 2: Add creator as owner member.
+    // Done separately so the business row exists before the membership
+    // check runs, avoiding any RLS timing issues.
     const { error: memberError } = await supabase.from("business_members").insert({
       business_id: business.id,
       user_id: user.id,
