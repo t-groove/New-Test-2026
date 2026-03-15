@@ -89,7 +89,7 @@ const stickyRight = { boxShadow: '-4px 0 8px rgba(0,0,0,0.3)' } as const;
 
 function SectionHeaderRow({ label, colCount }: { label: string; colCount: number }) {
   return (
-    <tr className="bg-[#0A0F1E]">
+    <tr className="section-header bg-[#0A0F1E]">
       <td
         className="sticky left-0 bg-[#0A0F1E] px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#6B7A99] z-10"
         style={stickyLeft}
@@ -109,7 +109,7 @@ function SectionHeaderRow({ label, colCount }: { label: string; colCount: number
 
 function SpacerRow({ colCount }: { colCount: number }) {
   return (
-    <tr className="h-3 bg-transparent">
+    <tr className="section-spacer h-3 bg-transparent">
       <td colSpan={colCount + 2} />
     </tr>
   );
@@ -136,7 +136,13 @@ function CategoryRow({ label, monthly, total, indent = true, muted = false }: Ca
         <td
           key={i}
           className={`px-3 py-1.5 text-right text-sm min-w-[80px] lg:min-w-[100px] tabular-nums ${
-            muted ? "text-[#6B7A99]" : v === 0 ? "text-[#6B7A99]" : v < 0 ? "text-[#EF4444]" : "text-[#E8ECF4]"
+            muted
+              ? "text-[#6B7A99]"
+              : v === 0
+              ? "text-[#6B7A99]"
+              : v < 0
+              ? "text-[#EF4444] print-negative"
+              : "text-[#E8ECF4] print-positive"
           }`}
         >
           {muted ? "—" : fmt(v)}
@@ -144,7 +150,13 @@ function CategoryRow({ label, monthly, total, indent = true, muted = false }: Ca
       ))}
       <td
         className={`sticky right-0 bg-[#111827] px-3 py-1.5 text-right text-sm font-semibold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10 ${
-          muted ? "text-[#6B7A99]" : total === 0 ? "text-[#6B7A99]" : total < 0 ? "text-[#EF4444]" : "text-[#E8ECF4]"
+          muted
+            ? "text-[#6B7A99]"
+            : total === 0
+            ? "text-[#6B7A99]"
+            : total < 0
+            ? "text-[#EF4444] print-negative"
+            : "text-[#E8ECF4] print-positive"
         }`}
         style={stickyRight}
       >
@@ -162,7 +174,7 @@ interface TotalRowProps {
 
 function TotalRow({ label, monthly, total }: TotalRowProps) {
   return (
-    <tr className="bg-[#111827] border-t border-[#1E2A45]">
+    <tr className="total-row bg-[#111827] border-t border-[#1E2A45]">
       <td
         className="sticky left-0 bg-[#111827] px-4 py-2 text-sm font-semibold text-[#E8ECF4] min-w-[180px] lg:min-w-[220px] z-10"
         style={stickyLeft}
@@ -173,7 +185,7 @@ function TotalRow({ label, monthly, total }: TotalRowProps) {
         <td
           key={i}
           className={`px-3 py-2 text-right text-sm font-semibold min-w-[80px] lg:min-w-[100px] tabular-nums ${
-            v === 0 ? "text-[#6B7A99]" : v < 0 ? "text-[#EF4444]" : "text-[#E8ECF4]"
+            v === 0 ? "text-[#6B7A99]" : v < 0 ? "text-[#EF4444] print-negative" : "text-[#E8ECF4] print-positive"
           }`}
         >
           {fmt(v)}
@@ -181,7 +193,7 @@ function TotalRow({ label, monthly, total }: TotalRowProps) {
       ))}
       <td
         className={`sticky right-0 bg-[#111827] px-3 py-2 text-right text-sm font-semibold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10 ${
-          total === 0 ? "text-[#6B7A99]" : total < 0 ? "text-[#EF4444]" : "text-[#E8ECF4]"
+          total === 0 ? "text-[#6B7A99]" : total < 0 ? "text-[#EF4444] print-negative" : "text-[#E8ECF4] print-positive"
         }`}
         style={stickyRight}
       >
@@ -195,7 +207,7 @@ function TotalRow({ label, monthly, total }: TotalRowProps) {
 function GrossProfitRow({ label, monthly, total }: TotalRowProps) {
   const color = total > 0 ? "#4F7FFF" : total < 0 ? "#EF4444" : "#6B7A99";
   return (
-    <tr className="bg-[#0A0F1E] border-t-2 border-[#4F7FFF]">
+    <tr className="grand-total-row bg-[#0A0F1E] border-t-2 border-[#4F7FFF]">
       <td
         className="sticky left-0 bg-[#0A0F1E] px-4 py-2.5 text-base font-bold font-syne text-[#E8ECF4] min-w-[180px] lg:min-w-[220px] z-10"
         style={stickyLeft}
@@ -207,7 +219,9 @@ function GrossProfitRow({ label, monthly, total }: TotalRowProps) {
         return (
           <td
             key={i}
-            className="px-3 py-2.5 text-right text-sm font-bold min-w-[80px] lg:min-w-[100px] tabular-nums"
+            className={`px-3 py-2.5 text-right text-sm font-bold min-w-[80px] lg:min-w-[100px] tabular-nums ${
+              v > 0 ? "print-positive" : v < 0 ? "print-negative" : ""
+            }`}
             style={{ color: c }}
           >
             {fmt(v)}
@@ -215,7 +229,9 @@ function GrossProfitRow({ label, monthly, total }: TotalRowProps) {
         );
       })}
       <td
-        className="sticky right-0 bg-[#0A0F1E] px-3 py-2.5 text-right text-base font-bold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10"
+        className={`sticky right-0 bg-[#0A0F1E] px-3 py-2.5 text-right text-base font-bold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10 ${
+          total > 0 ? "print-positive" : total < 0 ? "print-negative" : ""
+        }`}
         style={{ color, ...stickyRight }}
       >
         {fmt(total)}
@@ -228,7 +244,7 @@ function GrossProfitRow({ label, monthly, total }: TotalRowProps) {
 function NetOperatingIncomeRow({ label, monthly, total }: TotalRowProps) {
   const color = total > 0 ? "#22C55E" : total < 0 ? "#EF4444" : "#6B7A99";
   return (
-    <tr className="bg-[#0A0F1E] border-t-2 border-[#1E2A45]">
+    <tr className="grand-total-row bg-[#0A0F1E] border-t-2 border-[#1E2A45]">
       <td
         className="sticky left-0 bg-[#0A0F1E] px-4 py-2.5 text-sm font-bold font-syne text-[#E8ECF4] min-w-[180px] lg:min-w-[220px] z-10"
         style={stickyLeft}
@@ -240,7 +256,9 @@ function NetOperatingIncomeRow({ label, monthly, total }: TotalRowProps) {
         return (
           <td
             key={i}
-            className="px-3 py-2.5 text-right text-sm font-bold min-w-[80px] lg:min-w-[100px] tabular-nums"
+            className={`px-3 py-2.5 text-right text-sm font-bold min-w-[80px] lg:min-w-[100px] tabular-nums ${
+              v > 0 ? "print-positive" : v < 0 ? "print-negative" : ""
+            }`}
             style={{ color: c }}
           >
             {fmt(v)}
@@ -248,7 +266,9 @@ function NetOperatingIncomeRow({ label, monthly, total }: TotalRowProps) {
         );
       })}
       <td
-        className="sticky right-0 bg-[#0A0F1E] px-3 py-2.5 text-right text-sm font-bold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10"
+        className={`sticky right-0 bg-[#0A0F1E] px-3 py-2.5 text-right text-sm font-bold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10 ${
+          total > 0 ? "print-positive" : total < 0 ? "print-negative" : ""
+        }`}
         style={{ color, ...stickyRight }}
       >
         {fmt(total)}
@@ -261,7 +281,7 @@ function NetOperatingIncomeRow({ label, monthly, total }: TotalRowProps) {
 function NetIncomeRow({ label, monthly, total }: TotalRowProps) {
   const color = total > 0 ? "#22C55E" : total < 0 ? "#EF4444" : "#6B7A99";
   return (
-    <tr className="bg-[#0A0F1E] border-t-4 border-[#E8ECF4]">
+    <tr className="grand-total-row bg-[#0A0F1E] border-t-4 border-[#E8ECF4]">
       <td
         className="sticky left-0 bg-[#0A0F1E] px-4 py-3 text-base font-bold font-syne text-[#E8ECF4] min-w-[180px] lg:min-w-[220px] z-10"
         style={stickyLeft}
@@ -273,7 +293,9 @@ function NetIncomeRow({ label, monthly, total }: TotalRowProps) {
         return (
           <td
             key={i}
-            className="px-3 py-3 text-right text-sm font-bold min-w-[80px] lg:min-w-[100px] tabular-nums"
+            className={`px-3 py-3 text-right text-sm font-bold min-w-[80px] lg:min-w-[100px] tabular-nums ${
+              v > 0 ? "print-positive" : v < 0 ? "print-negative" : ""
+            }`}
             style={{ color: c }}
           >
             {fmt(v)}
@@ -281,7 +303,9 @@ function NetIncomeRow({ label, monthly, total }: TotalRowProps) {
         );
       })}
       <td
-        className="sticky right-0 bg-[#0A0F1E] px-3 py-3 text-right text-base font-bold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10"
+        className={`sticky right-0 bg-[#0A0F1E] px-3 py-3 text-right text-base font-bold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10 ${
+          total > 0 ? "print-positive" : total < 0 ? "print-negative" : ""
+        }`}
         style={{ color, ...stickyRight }}
       >
         {fmt(total)}
@@ -327,24 +351,132 @@ export default function PLStatement({ statement, year, businessName = "Your Busi
 
   return (
     <>
-      {/* Print styles */}
+      {/* Comprehensive print stylesheet */}
       <style>{`
         @media print {
-          .no-print { display: none !important; }
-          .print-white { background: white !important; color: black !important; }
-          body { background: white; color: black; }
-          table { font-size: 10px; }
-          .overflow-x-auto { overflow: visible !important; }
+          /* Hide everything except the P&L statement card */
+          body * {
+            visibility: hidden;
+          }
+
+          /* Show only the statement content */
+          #pl-statement-print,
+          #pl-statement-print * {
+            visibility: visible;
+          }
+
+          /* Position the statement at top of page */
+          #pl-statement-print {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+
+          /* Hide buttons inside the statement */
+          #pl-statement-print button,
+          #pl-statement-print .no-print {
+            display: none !important;
+          }
+
+          /* Clean white background, black text */
+          #pl-statement-print {
+            background: white !important;
+            color: black !important;
+          }
+
+          /* Make all text black for print */
+          #pl-statement-print * {
+            color: black !important;
+            background: white !important;
+            border-color: #ddd !important;
+          }
+
+          /* Exception: keep colored amounts readable */
+          #pl-statement-print .print-positive {
+            color: #166534 !important;
+          }
+          #pl-statement-print .print-negative {
+            color: #991b1b !important;
+          }
+
+          /* Sticky column backgrounds override */
+          #pl-statement-print td.sticky,
+          #pl-statement-print th.sticky {
+            background: white !important;
+            box-shadow: none !important;
+          }
+
+          /* Table fits on page */
+          #pl-statement-print table {
+            width: 100% !important;
+            font-size: 10px !important;
+            border-collapse: collapse !important;
+          }
+
+          #pl-statement-print th,
+          #pl-statement-print td {
+            padding: 3px 6px !important;
+            border-bottom: 1px solid #eee !important;
+            white-space: nowrap !important;
+          }
+
+          /* Section headers */
+          #pl-statement-print .section-header td {
+            background: #f5f5f5 !important;
+            font-weight: bold !important;
+            font-size: 9px !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+          }
+
+          /* Total rows */
+          #pl-statement-print .total-row td {
+            font-weight: bold !important;
+            border-top: 1px solid #999 !important;
+          }
+
+          /* Grand total rows */
+          #pl-statement-print .grand-total-row td {
+            font-weight: bold !important;
+            font-size: 11px !important;
+            border-top: 2px solid #333 !important;
+          }
+
+          /* Page setup */
+          @page {
+            size: landscape;
+            margin: 0.5in;
+          }
+
+          /* Prevent page breaks inside rows */
+          #pl-statement-print tr {
+            page-break-inside: avoid;
+          }
+
+          /* Allow page break between sections */
+          #pl-statement-print .section-spacer {
+            page-break-after: auto;
+          }
+
+          /* Overflow visible for table */
+          #pl-statement-print .overflow-x-auto {
+            overflow: visible !important;
+          }
         }
       `}</style>
 
-      <div className="w-full bg-[#111827] border border-[#1E2A45] rounded-xl p-6">
+      <div id="pl-statement-print" className="w-full bg-[#111827] border border-[#1E2A45] rounded-xl p-6">
         {/* Statement header */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
           <div>
-            <h2 className="font-syne text-xl font-bold text-[#E8ECF4]">{businessName}</h2>
-            <p className="text-sm text-[#6B7A99]">Profit and Loss</p>
-            <p className="text-sm text-[#6B7A99] mt-0.5">{dateRange}</p>
+            <h2 className="font-syne font-bold text-2xl text-[#E8ECF4] print:text-black print:text-xl">
+              {businessName}
+            </h2>
+            <p className="text-[#6B7A99] print:text-gray-600">Profit and Loss Statement</p>
+            <p className="text-[#6B7A99] text-sm print:text-gray-600">
+              {dateRange} · Cash Basis
+            </p>
           </div>
           <div className="flex items-center gap-2 no-print">
             <button

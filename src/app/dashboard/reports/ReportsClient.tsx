@@ -245,7 +245,6 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
   const [year, setYear] = useState(initialYear);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [isPending, startTransition] = useTransition();
-  const [showComingSoon, setShowComingSoon] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "statement" | "balance">("overview");
   const [balanceAsOfDate, setBalanceAsOfDate] = useState(
     new Date().toISOString().split("T")[0]
@@ -273,8 +272,11 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
   }
 
   function handleExportPDF() {
-    setShowComingSoon(true);
-    setTimeout(() => setShowComingSoon(false), 3000);
+    document.body.classList.add("printing-pdf");
+    setTimeout(() => {
+      window.print();
+      document.body.classList.remove("printing-pdf");
+    }, 100);
   }
 
   function handleBalanceDateChange(newDate: string) {
@@ -297,13 +299,6 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
       className="transition-opacity duration-200"
       style={{ opacity: isPending ? 0.5 : 1 }}
     >
-      {/* Coming soon toast */}
-      {showComingSoon && (
-        <div className="fixed top-4 right-4 z-50 bg-[#111827] border border-[#1E2A45] rounded-lg px-4 py-3 text-sm text-[#E8ECF4] shadow-xl">
-          PDF export coming soon!
-        </div>
-      )}
-
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
         <div>
@@ -347,21 +342,25 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
             </select>
           )}
 
-          <button
-            onClick={handleExportPDF}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-[#6B7A99] border border-[#1E2A45] rounded-lg hover:text-[#E8ECF4] hover:border-[#4F7FFF] transition-colors"
-          >
-            <FileDown className="h-4 w-4" />
-            Export PDF
-          </button>
+          {activeTab === "statement" && (
+            <>
+              <button
+                onClick={handleExportPDF}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-[#6B7A99] border border-[#1E2A45] rounded-lg hover:text-[#E8ECF4] hover:border-[#4F7FFF] transition-colors"
+              >
+                <FileDown className="h-4 w-4" />
+                Export PDF
+              </button>
 
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-[#6B7A99] border border-[#1E2A45] rounded-lg hover:text-[#E8ECF4] hover:border-[#4F7FFF] transition-colors"
-          >
-            <Printer className="h-4 w-4" />
-            Print
-          </button>
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-[#6B7A99] border border-[#1E2A45] rounded-lg hover:text-[#E8ECF4] hover:border-[#4F7FFF] transition-colors"
+              >
+                <Printer className="h-4 w-4" />
+                Print
+              </button>
+            </>
+          )}
         </div>
       </div>
 
