@@ -32,6 +32,12 @@ function downloadCSV(data: BalanceSheetData) {
   rows.push([]);
 
   rows.push(["ASSETS"]);
+  rows.push(["Current Assets"]);
+  for (const item of data.currentAssets) {
+    rows.push([`  ${item.label}`, item.amount.toFixed(2)]);
+  }
+  rows.push(["Total Current Assets", data.totalCurrentAssets.toFixed(2)]);
+  rows.push([]);
   rows.push(["Fixed Assets"]);
   if (data.fixedAssets.length === 0) {
     rows.push(["  (no asset transactions)", ""]);
@@ -48,7 +54,7 @@ function downloadCSV(data: BalanceSheetData) {
   rows.push(["LIABILITIES"]);
   rows.push(["Current Liabilities"]);
   if (data.currentLiabilities.length === 0) {
-    rows.push(["  (no liability transactions)", ""]);
+    rows.push(["  (none)", ""]);
   } else {
     for (const item of data.currentLiabilities) {
       rows.push([`  ${item.label}`, item.amount.toFixed(2)]);
@@ -62,7 +68,7 @@ function downloadCSV(data: BalanceSheetData) {
   for (const item of data.equityItems) {
     rows.push([`  ${item.label}`, item.amount.toFixed(2)]);
   }
-  rows.push([`  Retained Earnings`, data.retainedEarnings.toFixed(2)]);
+  rows.push(["  Retained Earnings", data.retainedEarnings.toFixed(2)]);
   rows.push(["Total Equity", data.totalEquity.toFixed(2)]);
   rows.push([]);
   rows.push(["TOTAL LIABILITIES + EQUITY", data.totalLiabilitiesAndEquity.toFixed(2)]);
@@ -134,10 +140,6 @@ function GrandTotalRow({ label, amount }: { label: string; amount: number }) {
   );
 }
 
-function Spacer() {
-  return <div className="h-4" />;
-}
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -157,6 +159,9 @@ export default function BalanceSheet({ data, asOfDate, onDateChange }: Props) {
       year: "numeric",
     });
   })();
+
+  const diff = Math.abs(data.totalAssets - data.totalLiabilitiesAndEquity);
+  const inBalance = diff < 0.01;
 
   return (
     <>
@@ -197,51 +202,78 @@ export default function BalanceSheet({ data, asOfDate, onDateChange }: Props) {
           </div>
         </div>
 
-        {/* Two-column layout: Assets | Liabilities + Equity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* ── LEFT: ASSETS ──────────────────────────────────────── */}
-          <div className="border border-[#1E2A45] rounded-lg overflow-hidden">
-            <SectionHeader label="Assets" />
+        {/* ── Stacked single-column layout ────────────────────────────────── */}
+        <div className="w-full space-y-0 border border-[#1E2A45] rounded-lg overflow-hidden">
 
-            <SubSectionHeader label="Fixed Assets" />
-            {data.fixedAssets.length === 0 ? (
-              <EmptyItem label="No asset transactions" />
-            ) : (
-              data.fixedAssets.map((item) => (
-                <LineItem key={item.label} {...item} />
-              ))
-            )}
-            <TotalRow label="Total Fixed Assets" amount={data.totalFixedAssets} />
+          {/* 1. ASSETS ────────────────────────────────────────────────────── */}
+          <SectionHeader label="Assets" />
 
-            <GrandTotalRow label="Total Assets" amount={data.totalAssets} />
-          </div>
+          <SubSectionHeader label="Current Assets" />
+          {data.currentAssets.map((item) => (
+            <LineItem key={item.label} {...item} />
+          ))}
+          <TotalRow label="Total Current Assets" amount={data.totalCurrentAssets} />
 
-          {/* ── RIGHT: LIABILITIES + EQUITY ───────────────────────── */}
-          <div className="border border-[#1E2A45] rounded-lg overflow-hidden">
-            <SectionHeader label="Liabilities" />
-
-            <SubSectionHeader label="Current Liabilities" />
-            {data.currentLiabilities.length === 0 ? (
-              <EmptyItem label="No liability transactions" />
-            ) : (
-              data.currentLiabilities.map((item) => (
-                <LineItem key={item.label} {...item} />
-              ))
-            )}
-            <TotalRow label="Total Current Liabilities" amount={data.totalCurrentLiabilities} />
-            <TotalRow label="Total Liabilities" amount={data.totalLiabilities} />
-
-            <Spacer />
-
-            <SectionHeader label="Equity" />
-            {data.equityItems.map((item) => (
+          <SubSectionHeader label="Fixed Assets" />
+          {data.fixedAssets.length === 0 ? (
+            <EmptyItem label="No fixed asset transactions" />
+          ) : (
+            data.fixedAssets.map((item) => (
               <LineItem key={item.label} {...item} />
-            ))}
-            <LineItem label="Retained Earnings" amount={data.retainedEarnings} isContra={false} />
-            <TotalRow label="Total Equity" amount={data.totalEquity} />
+            ))
+          )}
+          <TotalRow label="Total Fixed Assets" amount={data.totalFixedAssets} />
 
-            <GrandTotalRow label="Total Liabilities + Equity" amount={data.totalLiabilitiesAndEquity} />
-          </div>
+          <GrandTotalRow label="Total Assets" amount={data.totalAssets} />
+
+          {/* Divider */}
+          <div className="border-t-2 border-[#1E2A45]" />
+
+          {/* 2. LIABILITIES ───────────────────────────────────────────────── */}
+          <SectionHeader label="Liabilities" />
+
+          <SubSectionHeader label="Current Liabilities" />
+          {data.currentLiabilities.length === 0 ? (
+            <EmptyItem label="No liability transactions" />
+          ) : (
+            data.currentLiabilities.map((item) => (
+              <LineItem key={item.label} {...item} />
+            ))
+          )}
+          <TotalRow label="Total Current Liabilities" amount={data.totalCurrentLiabilities} />
+          <TotalRow label="Total Liabilities" amount={data.totalLiabilities} />
+
+          {/* 3. EQUITY ────────────────────────────────────────────────────── */}
+          <SectionHeader label="Equity" />
+
+          {data.equityItems.map((item) => (
+            <LineItem key={item.label} {...item} />
+          ))}
+          <LineItem label="Retained Earnings" amount={data.retainedEarnings} isContra={false} />
+          <TotalRow label="Total Equity" amount={data.totalEquity} />
+
+          {/* 4. TOTAL LIABILITIES + EQUITY ───────────────────────────────── */}
+          <GrandTotalRow label="Total Liabilities + Equity" amount={data.totalLiabilitiesAndEquity} />
+        </div>
+
+        {/* 5. Balance check banner ──────────────────────────────────────── */}
+        <div
+          className={`mt-4 flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
+            inBalance
+              ? "bg-[#22C55E]/10 border border-[#22C55E]/30 text-[#22C55E]"
+              : "bg-[#F59E0B]/10 border border-[#F59E0B]/30 text-[#F59E0B]"
+          }`}
+        >
+          <span className="text-base">{inBalance ? "✓" : "⚠"}</span>
+          {inBalance ? (
+            <span>
+              Assets ({fmt(data.totalAssets)}) = Liabilities + Equity ({fmt(data.totalLiabilitiesAndEquity)}) — Balance sheet is in balance
+            </span>
+          ) : (
+            <span>
+              Assets ({fmt(data.totalAssets)}) ≠ Liabilities + Equity ({fmt(data.totalLiabilitiesAndEquity)}) — Difference: {fmt(diff)}
+            </span>
+          )}
         </div>
       </div>
     </>

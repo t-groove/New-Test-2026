@@ -307,13 +307,17 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
         <div>
           <h1 className="font-syne text-3xl font-bold text-[#E8ECF4]">
-            Profit & Loss Report
+            Reports
           </h1>
-          <p className="text-sm text-[#6B7A99] mt-1">Cash basis accounting</p>
+          <p className="text-sm text-[#6B7A99] mt-1">
+            {activeTab === "overview" && "Profit & Loss Overview"}
+            {activeTab === "statement" && "Profit & Loss Statement"}
+            {activeTab === "balance" && "Balance Sheet"}
+          </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Account filter */}
-          {initialAccounts.length > 0 && (
+          {/* Account filter — hidden on balance sheet tab */}
+          {activeTab !== "balance" && initialAccounts.length > 0 && (
             <select
               value={selectedAccountId}
               onChange={(e) => handleAccountChange(e.target.value)}
@@ -327,18 +331,20 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
               ))}
             </select>
           )}
-          {/* Year selector */}
-          <select
-            value={year}
-            onChange={(e) => handleYearChange(Number(e.target.value))}
-            className="bg-[#111827] border border-[#1E2A45] text-[#E8ECF4] text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-[#4F7FFF] cursor-pointer"
-          >
-            {yearsToShow.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
+          {/* Year selector — hidden on balance sheet tab */}
+          {activeTab !== "balance" && (
+            <select
+              value={year}
+              onChange={(e) => handleYearChange(Number(e.target.value))}
+              className="bg-[#111827] border border-[#1E2A45] text-[#E8ECF4] text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-[#4F7FFF] cursor-pointer"
+            >
+              {yearsToShow.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          )}
 
           <button
             onClick={handleExportPDF}

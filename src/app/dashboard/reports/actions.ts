@@ -98,6 +98,8 @@ export interface BalanceSheetItem {
 export interface BalanceSheetData {
   asOfDate: string;
   // Assets
+  currentAssets: BalanceSheetItem[];
+  totalCurrentAssets: number;
   fixedAssets: BalanceSheetItem[];
   totalFixedAssets: number;
   totalAssets: number;
@@ -121,6 +123,8 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
 
   const empty: BalanceSheetData = {
     asOfDate,
+    currentAssets: [],
+    totalCurrentAssets: 0,
     fixedAssets: [],
     totalFixedAssets: 0,
     totalAssets: 0,
@@ -160,7 +164,20 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
     }
   }
 
-  // Assets: expense = acquisition (adds), income = disposal (subtracts)
+  // Current Assets: Cash & Bank = net of ALL transactions (cash-basis implied cash balance)
+  let totalCashIn = 0;
+  let totalCashOut = 0;
+  for (const t of transactions) {
+    if (t.type === "income") totalCashIn += Number(t.amount);
+    else totalCashOut += Number(t.amount);
+  }
+  const cashBalance = totalCashIn - totalCashOut;
+  const currentAssets: BalanceSheetItem[] = [
+    { label: "Cash & Bank Accounts", amount: cashBalance, isContra: false },
+  ];
+  const totalCurrentAssets = cashBalance;
+
+  // Fixed Assets: expense = acquisition (adds), income = disposal (subtracts)
   const ASSET_CATS = ["Equipment", "Real Estate", "Vehicles"];
   const fixedAssets: BalanceSheetItem[] = [];
   const seenAssets = new Set<string>();
@@ -179,7 +196,7 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
   }
 
   const totalFixedAssets = fixedAssets.reduce((s, i) => s + i.amount, 0);
-  const totalAssets = totalFixedAssets;
+  const totalAssets = totalCurrentAssets + totalFixedAssets;
 
   // Liabilities: income = borrowed (adds), expense = repaid (subtracts)
   const LIABILITY_CATS = ["Line of Credit", "Loans"];
@@ -232,6 +249,8 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
 
   return {
     asOfDate,
+    currentAssets,
+    totalCurrentAssets,
     fixedAssets,
     totalFixedAssets,
     totalAssets,
