@@ -102,13 +102,13 @@ interface CategoryRowProps {
 function CategoryRow({ label, monthly, total, indent = true }: CategoryRowProps) {
   return (
     <tr className="hover:bg-[#1E2A45]/20 transition-colors">
-      <td className={`px-4 py-1.5 text-sm text-[#E8ECF4] min-w-[200px] ${indent ? "pl-8" : "pl-4"}`}>
+      <td className={`px-4 py-1.5 text-sm text-[#E8ECF4] min-w-[180px] lg:min-w-[220px] ${indent ? "pl-8" : "pl-4"}`}>
         {label}
       </td>
       {monthly.map((v, i) => (
         <td
           key={i}
-          className={`px-3 py-1.5 text-right text-sm min-w-[80px] tabular-nums ${
+          className={`px-3 py-1.5 text-right text-sm min-w-[80px] lg:min-w-[100px] tabular-nums ${
             v === 0 ? "text-[#6B7A99]" : v < 0 ? "text-[#EF4444]" : "text-[#E8ECF4]"
           }`}
         >
@@ -135,13 +135,13 @@ interface TotalRowProps {
 function TotalRow({ label, monthly, total }: TotalRowProps) {
   return (
     <tr className="bg-[#111827] border-t border-[#1E2A45]">
-      <td className="px-4 py-2 text-sm font-semibold text-[#E8ECF4] min-w-[200px]">
+      <td className="px-4 py-2 text-sm font-semibold text-[#E8ECF4] min-w-[180px] lg:min-w-[220px]">
         {label}
       </td>
       {monthly.map((v, i) => (
         <td
           key={i}
-          className={`px-3 py-2 text-right text-sm font-semibold min-w-[80px] tabular-nums ${
+          className={`px-3 py-2 text-right text-sm font-semibold min-w-[80px] lg:min-w-[100px] tabular-nums ${
             v === 0 ? "text-[#6B7A99]" : v < 0 ? "text-[#EF4444]" : "text-[#E8ECF4]"
           }`}
         >
@@ -169,7 +169,7 @@ function ProfitRow({ label, monthly, total }: ProfitRowProps) {
   const color = total > 0 ? "#22C55E" : total < 0 ? "#EF4444" : "#6B7A99";
   return (
     <tr className="bg-[#0A0F1E] border-t-2 border-[#1E2A45]">
-      <td className="px-4 py-2.5 text-sm font-bold font-syne text-[#E8ECF4] min-w-[200px]">
+      <td className="px-4 py-2.5 text-sm font-bold font-syne text-[#E8ECF4] min-w-[180px] lg:min-w-[220px]">
         {label}
       </td>
       {monthly.map((v, i) => {
@@ -177,7 +177,7 @@ function ProfitRow({ label, monthly, total }: ProfitRowProps) {
         return (
           <td
             key={i}
-            className="px-3 py-2.5 text-right text-sm font-bold min-w-[80px] tabular-nums"
+            className="px-3 py-2.5 text-right text-sm font-bold min-w-[80px] lg:min-w-[100px] tabular-nums"
             style={{ color: c }}
           >
             {fmtSign(v)}
@@ -236,7 +236,7 @@ export default function PLStatement({ statement, year }: PLStatementProps) {
         }
       `}</style>
 
-      <div className="bg-[#111827] border border-[#1E2A45] rounded-xl p-6">
+      <div className="w-full bg-[#111827] border border-[#1E2A45] rounded-xl p-6">
         {/* Statement header */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
           <div>
@@ -262,15 +262,15 @@ export default function PLStatement({ statement, year }: PLStatementProps) {
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
+          <table className="w-full min-w-[900px] border-collapse">
             <thead>
               <tr className="border-b border-[#1E2A45]">
-                <th className="px-4 py-2.5 text-left text-xs font-semibold text-[#6B7A99] uppercase tracking-wider min-w-[200px]">
+                <th className="px-4 py-2.5 text-left text-xs font-semibold text-[#6B7A99] uppercase tracking-wider min-w-[180px] lg:min-w-[220px]">
                 </th>
                 {months.map((m) => (
                   <th
                     key={m}
-                    className="px-3 py-2.5 text-right text-xs font-semibold text-[#6B7A99] uppercase tracking-wider min-w-[80px]"
+                    className="px-3 py-2.5 text-right text-xs font-semibold text-[#6B7A99] uppercase tracking-wider min-w-[80px] lg:min-w-[100px]"
                   >
                     {m}
                   </th>

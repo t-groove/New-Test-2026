@@ -28,7 +28,7 @@ export default function DashboardNavbar() {
 
   return (
     <nav className="w-full border-b border-[#1E2A45] bg-[#111827] py-4">
-      <div className="container mx-auto px-4 flex justify-between items-center">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-12 flex justify-between items-center">
         <div className="flex items-center gap-6">
           <Link href="/" prefetch className="font-syne text-xl font-bold text-[#E8ECF4] hover:text-[#4F7FFF] transition-colors">
             Centerbase

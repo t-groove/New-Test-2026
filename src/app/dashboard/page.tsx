@@ -63,7 +63,7 @@ export default async function DashboardPage() {
     <>
       <DashboardNavbar />
       <main className="w-full bg-[#0A0F1E] min-h-screen">
-        <div className="container mx-auto px-4 py-8">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-12 py-8">
           <DashboardClient
             ytdIncome={ytdIncome}
             ytdExpenses={ytdExpenses}

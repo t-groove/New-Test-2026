@@ -206,12 +206,12 @@ export async function getReportData(year: number, accountId?: string): Promise<R
   // Build statement rows — net amounts (negative = contra)
   const incomeRows: StatementRow[] = Array.from(incomeCategoryMonthly.entries())
     .map(([category, monthly]) => ({ category, monthly, total: monthly.reduce((s, v) => s + v, 0) }))
-    .filter((r) => r.total !== 0)
+    .filter((r) => r.monthly.some((val) => val !== 0))
     .sort((a, b) => b.total - a.total);
 
   const expenseRows: StatementRow[] = Array.from(expenseCategoryMonthly.entries())
     .map(([category, monthly]) => ({ category, monthly, total: monthly.reduce((s, v) => s + v, 0) }))
-    .filter((r) => r.total !== 0)
+    .filter((r) => r.monthly.some((val) => val !== 0))
     .sort((a, b) => b.total - a.total);
 
   const grossProfit = monthlyIncome.map((inc, i) => inc - monthlyExpenses[i]);
