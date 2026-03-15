@@ -297,11 +297,12 @@ interface PLStatementProps {
   year: number;
   accounts: BankAccount[];
   selectedAccountId: string;
+  businessName?: string;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function PLStatement({ statement, year }: PLStatementProps) {
+export default function PLStatement({ statement, year, businessName = "Your Business" }: PLStatementProps) {
   const {
     months,
     incomeRows,
@@ -341,7 +342,7 @@ export default function PLStatement({ statement, year }: PLStatementProps) {
         {/* Statement header */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
           <div>
-            <h2 className="font-syne text-xl font-bold text-[#E8ECF4]">Your Business</h2>
+            <h2 className="font-syne text-xl font-bold text-[#E8ECF4]">{businessName}</h2>
             <p className="text-sm text-[#6B7A99]">Profit and Loss</p>
             <p className="text-sm text-[#6B7A99] mt-0.5">{dateRange}</p>
           </div>

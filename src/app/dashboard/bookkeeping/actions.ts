@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "../../../../supabase/server";
+import { getCurrentBusinessId } from "@/lib/business/actions";
 import type { ParsedTransaction } from "@/lib/bookkeeping/parse-csv";
 import { getAccountType } from "@/lib/bookkeeping/categories";
 
@@ -18,8 +19,14 @@ export async function uploadTransactions(
       return { success: false, error: "Not authenticated" };
     }
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) {
+      return { success: false, error: "No business found. Please set up your business first." };
+    }
+
     const rows = transactions.map((t) => ({
       user_id: user.id,
+      business_id: businessId,
       date: t.date,
       description: t.description,
       amount: t.amount,
@@ -53,6 +60,7 @@ export interface TransactionFilters {
 export interface Transaction {
   id: string;
   user_id: string;
+  business_id: string | null;
   date: string;
   description: string;
   amount: number;
@@ -80,10 +88,13 @@ export async function getTransactions(
 
   if (!user) return [];
 
+  const businessId = await getCurrentBusinessId(supabase);
+  if (!businessId) return [];
+
   let query = supabase
     .from("transactions")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("business_id", businessId)
     .is("parent_id", null) // top-level only; children are fetched separately
     .order("date", { ascending: false });
 
@@ -144,12 +155,15 @@ export async function updateTransactionCategory(
 
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const newAccountType = getAccountType(category);
     const { error } = await supabase
       .from("transactions")
       .update({ category, account_type: newAccountType })
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("business_id", businessId);
 
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -169,11 +183,14 @@ export async function deleteTransaction(
 
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const { error } = await supabase
       .from("transactions")
       .delete()
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("business_id", businessId);
 
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -198,10 +215,14 @@ export async function createTransaction(data: {
 
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const { data: row, error } = await supabase
       .from("transactions")
       .insert({
         user_id: user.id,
+        business_id: businessId,
         date: data.date,
         description: data.description,
         amount: data.amount,
@@ -233,11 +254,14 @@ export async function updateTransactionDescription(
 
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const { error } = await supabase
       .from("transactions")
       .update({ description })
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("business_id", businessId);
 
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -263,11 +287,14 @@ export async function updateTransaction(
 
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const { error } = await supabase
       .from("transactions")
       .update(data)
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("business_id", businessId);
 
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -293,12 +320,15 @@ export async function splitTransaction(
     } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     // Fetch the parent transaction
     const { data: parent, error: fetchError } = await supabase
       .from("transactions")
       .select("*")
       .eq("id", parentId)
-      .eq("user_id", user.id)
+      .eq("business_id", businessId)
       .single();
     if (fetchError || !parent) return { success: false, error: "Transaction not found" };
 
@@ -308,7 +338,10 @@ export async function splitTransaction(
     // Verify amounts balance within $0.01
     const total = splits.reduce((s, sp) => s + sp.amount, 0);
     if (Math.abs(total - Number(parent.amount)) > 0.01) {
-      return { success: false, error: `Split amounts ($${total.toFixed(2)}) must equal transaction amount ($${Number(parent.amount).toFixed(2)})` };
+      return {
+        success: false,
+        error: `Split amounts ($${total.toFixed(2)}) must equal transaction amount ($${Number(parent.amount).toFixed(2)})`,
+      };
     }
 
     // If already split, delete existing children first
@@ -330,6 +363,7 @@ export async function splitTransaction(
     // Insert child rows
     const childRows = splits.map((sp, idx) => ({
       user_id: user.id,
+      business_id: businessId,
       date: parent.date,
       description: sp.description,
       amount: sp.amount,
@@ -361,16 +395,19 @@ export async function unsplitTransaction(
     } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Not authenticated" };
 
-    // Verify ownership
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
+    // Verify ownership via business_id
     const { data: parent, error: fetchError } = await supabase
       .from("transactions")
       .select("id")
       .eq("id", parentId)
-      .eq("user_id", user.id)
+      .eq("business_id", businessId)
       .single();
     if (fetchError || !parent) return { success: false, error: "Transaction not found" };
 
-    // Delete all children (cascade handled by DB, but explicit is safer)
+    // Delete all children
     const { error: delError } = await supabase
       .from("transactions")
       .delete()

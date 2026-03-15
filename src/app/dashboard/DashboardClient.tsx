@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   TrendingUp,
   TrendingDown,
@@ -10,8 +12,10 @@ import {
   Building2,
   FileText,
   CheckCircle,
+  ArrowRight,
 } from "lucide-react";
 import type { AccountSummary } from "./accounts/actions";
+import { createBusiness } from "@/lib/business/actions";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +57,16 @@ const TYPE_COLORS: Record<string, string> = {
   cash: "bg-[#F59E0B]/10 text-[#F59E0B]",
   other: "bg-[#6B7A99]/20 text-[#6B7A99]",
 };
+
+const ENTITY_TYPES = [
+  "LLC",
+  "S-Corp",
+  "C-Corp",
+  "Sole Proprietor",
+  "Partnership",
+  "Non-Profit",
+  "Other",
+];
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -131,6 +145,87 @@ function ActionItem({
   );
 }
 
+// ── Onboarding Card ───────────────────────────────────────────────────────────
+
+function OnboardingCard() {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [name, setName] = useState("");
+  const [entityType, setEntityType] = useState("LLC");
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await createBusiness({ name: name.trim(), entity_type: entityType });
+      if (result.success) {
+        router.refresh();
+      } else {
+        setError(result.error);
+      }
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh]">
+      <div className="w-full max-w-md bg-[#111827] border border-[#1E2A45] rounded-2xl p-8">
+        <div className="w-12 h-12 rounded-full bg-[#4F7FFF]/10 flex items-center justify-center mb-6">
+          <Building2 size={24} className="text-[#4F7FFF]" />
+        </div>
+        <h1 className="font-syne text-2xl font-bold text-[#E8ECF4] mb-1">
+          Welcome to Centerbase!
+        </h1>
+        <p className="text-sm text-[#6B7A99] mb-6">Let&apos;s set up your business.</p>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label className="block text-sm text-[#6B7A99] mb-1.5">Business name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Acme LLC"
+              required
+              className="w-full bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-[#4F7FFF] placeholder:text-[#6B7A99]"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-[#6B7A99] mb-1.5">Entity type</label>
+            <select
+              value={entityType}
+              onChange={(e) => setEntityType(e.target.value)}
+              className="w-full bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-[#4F7FFF] cursor-pointer"
+            >
+              {ENTITY_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {error && (
+            <p className="text-sm text-[#EF4444] bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={isPending || !name.trim()}
+            className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-[#4F7FFF] hover:bg-[#3D6FEF] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {isPending ? "Creating..." : "Get Started"}
+            {!isPending && <ArrowRight size={16} />}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -142,6 +237,7 @@ interface Props {
   uncategorizedCount: number;
   userName: string;
   currentYear: number;
+  hasBusiness: boolean;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -155,7 +251,12 @@ export default function DashboardClient({
   uncategorizedCount,
   userName,
   currentYear,
+  hasBusiness,
 }: Props) {
+  if (!hasBusiness) {
+    return <OnboardingCard />;
+  }
+
   const today = new Date();
   const periodLabel = `Jan 1 – ${today.toLocaleDateString("en-US", {
     month: "short",
@@ -180,10 +281,7 @@ export default function DashboardClient({
           <h2 className="font-syne text-xl font-semibold text-[#E8ECF4]">
             Year-to-date Performance
           </h2>
-          <Link
-            href="/dashboard/reports"
-            className="text-sm text-[#4F7FFF] hover:underline"
-          >
+          <Link href="/dashboard/reports" className="text-sm text-[#4F7FFF] hover:underline">
             View full report →
           </Link>
         </div>
@@ -222,11 +320,7 @@ export default function DashboardClient({
             label="Profit Margin"
             value={ytdIncome > 0 ? formatPct(profitMargin) : "—"}
             color={
-              ytdIncome === 0
-                ? "#6B7A99"
-                : profitMargin >= 0
-                ? "#22C55E"
-                : "#EF4444"
+              ytdIncome === 0 ? "#6B7A99" : profitMargin >= 0 ? "#22C55E" : "#EF4444"
             }
             iconBg={
               ytdIncome === 0
@@ -256,16 +350,11 @@ export default function DashboardClient({
       {/* ── Section 2: Action Items ───────────────────────────────────────── */}
       <section>
         <div className="mb-4">
-          <h2 className="font-syne text-xl font-semibold text-[#E8ECF4]">
-            Action Items
-          </h2>
-          <p className="text-sm text-[#6B7A99] mt-0.5">
-            Things that need your attention
-          </p>
+          <h2 className="font-syne text-xl font-semibold text-[#E8ECF4]">Action Items</h2>
+          <p className="text-sm text-[#6B7A99] mt-0.5">Things that need your attention</p>
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* All caught up */}
           {uncategorizedCount === 0 && bankAccounts.length > 0 && (
             <ActionItem
               color="#22C55E"
@@ -279,7 +368,6 @@ export default function DashboardClient({
             />
           )}
 
-          {/* Uncategorized transactions */}
           {uncategorizedCount > 0 && (
             <ActionItem
               color="#F59E0B"
@@ -293,7 +381,6 @@ export default function DashboardClient({
             />
           )}
 
-          {/* No bank accounts */}
           {bankAccounts.length === 0 && (
             <ActionItem
               color="#4F7FFF"
@@ -307,7 +394,6 @@ export default function DashboardClient({
             />
           )}
 
-          {/* P&L report tip — always shown */}
           <ActionItem
             color="#4F7FFF"
             bgColor="#4F7FFF0D"
@@ -324,13 +410,8 @@ export default function DashboardClient({
       {/* ── Section 3: Bank Accounts ─────────────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-syne text-xl font-semibold text-[#E8ECF4]">
-            Bank Accounts
-          </h2>
-          <Link
-            href="/dashboard/accounts"
-            className="text-sm text-[#4F7FFF] hover:underline"
-          >
+          <h2 className="font-syne text-xl font-semibold text-[#E8ECF4]">Bank Accounts</h2>
+          <Link href="/dashboard/accounts" className="text-sm text-[#4F7FFF] hover:underline">
             Manage accounts →
           </Link>
         </div>
@@ -338,9 +419,7 @@ export default function DashboardClient({
         {bankAccounts.length === 0 ? (
           <div className="bg-[#111827] border border-[#1E2A45] rounded-xl p-8 text-center">
             <Building2 size={32} className="text-[#6B7A99] mx-auto mb-3" />
-            <p className="text-[#E8ECF4] font-medium mb-1">
-              No bank accounts connected yet
-            </p>
+            <p className="text-[#E8ECF4] font-medium mb-1">No bank accounts connected yet</p>
             <p className="text-sm text-[#6B7A99] mb-4">
               Add a bank account to start organizing your transactions.
             </p>
@@ -379,9 +458,7 @@ export default function DashboardClient({
                     </p>
                   )}
                 </div>
-                <p className="font-syne font-semibold text-[#E8ECF4] text-base mb-3">
-                  {acc.name}
-                </p>
+                <p className="font-syne font-semibold text-[#E8ECF4] text-base mb-3">{acc.name}</p>
                 <div className="flex items-center gap-2 mb-4">
                   <span
                     className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${

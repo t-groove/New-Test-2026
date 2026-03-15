@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "../../../../supabase/server";
+import { getCurrentBusinessId } from "@/lib/business/actions";
 
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -152,16 +153,19 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
 
   if (!user) return empty;
 
+  const businessId = await getCurrentBusinessId(supabase);
+  if (!businessId) return empty;
+
   const [{ data: transactions }, { data: bankAccountsRaw }] = await Promise.all([
     supabase
       .from("transactions")
       .select("date, amount, type, category, account_type, account_id, is_split, parent_id")
-      .eq("user_id", user.id)
+      .eq("business_id", businessId)
       .lte("date", asOfDate),
     supabase
       .from("bank_accounts")
       .select("id, name, bank_name, last_four")
-      .eq("user_id", user.id)
+      .eq("business_id", businessId)
       .eq("is_active", true)
       .order("created_at", { ascending: true }),
   ]);
@@ -230,9 +234,9 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
   ];
   const { data: fixedAssetLines } = await supabase
     .from("journal_entry_lines")
-    .select("account_name, debit, credit, journal_entries!inner(user_id, date)")
+    .select("account_name, debit, credit, journal_entries!inner(business_id, date)")
     .in("account_name", FIXED_ASSET_ACCOUNT_NAMES)
-    .eq("journal_entries.user_id", user.id)
+    .eq("journal_entries.business_id", businessId)
     .lte("journal_entries.date", asOfDate);
 
   const hasFixedAssets = (fixedAssetLines ?? []).length > 0;
@@ -240,7 +244,6 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
   let totalFixedAssets = 0;
 
   if (hasFixedAssets) {
-    // Aggregate fixed asset balances by account name (debit increases, credit decreases)
     const assetBalMap = new Map<string, number>();
     for (const line of fixedAssetLines ?? []) {
       const bal = (assetBalMap.get(line.account_name) ?? 0) + Number(line.debit) - Number(line.credit);
@@ -254,9 +257,9 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
     // Accumulated depreciation from journal entries
     const { data: depLines } = await supabase
       .from("journal_entry_lines")
-      .select("debit, credit, journal_entries!inner(user_id, date)")
+      .select("debit, credit, journal_entries!inner(business_id, date)")
       .eq("account_name", "Accumulated Depreciation")
-      .eq("journal_entries.user_id", user.id)
+      .eq("journal_entries.business_id", businessId)
       .lte("journal_entries.date", asOfDate);
     const accumDep = (depLines ?? []).reduce(
       (sum: number, l: { debit: number; credit: number }) => sum + Number(l.credit) - Number(l.debit),
@@ -271,7 +274,7 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
 
   const totalAssets = totalCurrentAssets + totalFixedAssets;
 
-  // Liabilities: income = borrowed (adds), expense = repaid (subtracts)
+  // Liabilities
   const LIABILITY_CATS = ["Line of Credit", "Loans"];
   const currentLiabilities: BalanceSheetItem[] = [];
   const seenLiabilities = new Set<string>();
@@ -315,7 +318,7 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
   let currentExpenses = 0;
 
   for (const t of transactions) {
-    if (t.is_split) continue; // split parents are double-counted via children
+    if (t.is_split) continue;
     if (t.account_type !== "Income" && t.account_type !== "Expense") continue;
     const amt = Number(t.amount);
     const isPrior = t.date < yearStart;
@@ -331,10 +334,11 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
     }
   }
 
-  const retainedEarnings = priorIncome - priorExpenses;       // prior years only
-  const currentYearNetIncome = currentIncome - currentExpenses; // current year only
+  const retainedEarnings = priorIncome - priorExpenses;
+  const currentYearNetIncome = currentIncome - currentExpenses;
 
-  const totalEquity = equityItems.reduce((s, i) => s + i.amount, 0) + retainedEarnings + currentYearNetIncome;
+  const totalEquity =
+    equityItems.reduce((s, i) => s + i.amount, 0) + retainedEarnings + currentYearNetIncome;
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
 
   return {
@@ -362,7 +366,7 @@ export async function getReportData(year: number, accountId?: string): Promise<R
     data: { user },
   } = await supabase.auth.getUser();
 
-  function emptyStatement(year: number): StatementData {
+  function emptyStatement(y: number): StatementData {
     const zeros = new Array(12).fill(0);
     return {
       months: MONTH_NAMES,
@@ -381,7 +385,7 @@ export async function getReportData(year: number, accountId?: string): Promise<R
       netOperatingIncomeAnnual: 0,
       netIncome: zeros,
       netIncomeAnnual: 0,
-      dateRange: `January – December ${year}`,
+      dateRange: `January – December ${y}`,
       companyLabel: "Profit and Loss",
     };
   }
@@ -397,11 +401,14 @@ export async function getReportData(year: number, accountId?: string): Promise<R
 
   if (!user) return empty;
 
+  const businessId = await getCurrentBusinessId(supabase);
+  if (!businessId) return empty;
+
   // Fetch transactions for the given year
   let query = supabase
     .from("transactions")
     .select("date, amount, type, category, account_type, is_split")
-    .eq("user_id", user.id)
+    .eq("business_id", businessId)
     .gte("date", `${year}-01-01`)
     .lte("date", `${year}-12-31`);
 
@@ -415,7 +422,7 @@ export async function getReportData(year: number, accountId?: string): Promise<R
   const { data: allDates } = await supabase
     .from("transactions")
     .select("date")
-    .eq("user_id", user.id);
+    .eq("business_id", businessId);
 
   const yearSet = new Set<number>();
   for (const t of allDates ?? []) {
@@ -427,7 +434,7 @@ export async function getReportData(year: number, accountId?: string): Promise<R
     return { ...empty, availableYears };
   }
 
-  // Only include Income and Expense; exclude split parents (children carry the categorised amounts)
+  // Only include Income and Expense; exclude split parents
   const plTransactions = transactions.filter(
     (t) => (t.account_type === "Income" || t.account_type === "Expense") && !t.is_split
   );
@@ -436,7 +443,6 @@ export async function getReportData(year: number, accountId?: string): Promise<R
   const monthlyExpenses = new Array(12).fill(0);
   const expenseCategoryMap = new Map<string, number>();
   const incomeCategoryMap = new Map<string, number>();
-  // Monthly-per-category maps for statement
   const incomeCategoryMonthly = new Map<string, number[]>();
   const expenseCategoryMonthly = new Map<string, number[]>();
 
@@ -447,14 +453,16 @@ export async function getReportData(year: number, accountId?: string): Promise<R
     if (incomeEffect !== 0) {
       monthlyIncome[monthIndex] += incomeEffect;
       incomeCategoryMap.set(t.category, (incomeCategoryMap.get(t.category) ?? 0) + incomeEffect);
-      if (!incomeCategoryMonthly.has(t.category)) incomeCategoryMonthly.set(t.category, new Array(12).fill(0));
+      if (!incomeCategoryMonthly.has(t.category))
+        incomeCategoryMonthly.set(t.category, new Array(12).fill(0));
       incomeCategoryMonthly.get(t.category)![monthIndex] += incomeEffect;
     }
 
     if (expenseEffect !== 0) {
       monthlyExpenses[monthIndex] += expenseEffect;
       expenseCategoryMap.set(t.category, (expenseCategoryMap.get(t.category) ?? 0) + expenseEffect);
-      if (!expenseCategoryMonthly.has(t.category)) expenseCategoryMonthly.set(t.category, new Array(12).fill(0));
+      if (!expenseCategoryMonthly.has(t.category))
+        expenseCategoryMonthly.set(t.category, new Array(12).fill(0));
       expenseCategoryMonthly.get(t.category)![monthIndex] += expenseEffect;
     }
   }
@@ -487,7 +495,6 @@ export async function getReportData(year: number, accountId?: string): Promise<R
     }))
     .sort((a, b) => b.amount - a.amount);
 
-  // Build statement rows — net amounts (negative = contra)
   const incomeRows: StatementRow[] = Array.from(incomeCategoryMonthly.entries())
     .map(([category, monthly]) => ({ category, monthly, total: monthly.reduce((s, v) => s + v, 0) }))
     .filter((r) => r.monthly.some((val) => val !== 0))
@@ -498,15 +505,10 @@ export async function getReportData(year: number, accountId?: string): Promise<R
     .filter((r) => r.monthly.some((val) => val !== 0))
     .sort((a, b) => b.total - a.total);
 
-  // COGS = 0 for service business
   const totalCogs = new Array(12).fill(0);
   const totalCogsAnnual = 0;
-
-  // Gross Profit = Total Income - Total COGS (= Total Income for service biz)
   const grossProfit = monthlyIncome.map((inc, i) => inc - totalCogs[i]);
   const grossProfitAnnual = grossProfit.reduce((s, v) => s + v, 0);
-
-  // Net Operating Income = Gross Profit - Total Expenses
   const netOperatingIncome = grossProfit.map((gp, i) => gp - monthlyExpenses[i]);
   const netOperatingIncomeAnnual = netOperatingIncome.reduce((s, v) => s + v, 0);
 

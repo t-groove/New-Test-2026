@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '../../supabase/client'
 import {
   DropdownMenu,
@@ -12,13 +12,20 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
 import { Button } from './ui/button'
-import { UserCircle, KeyRound, LogOut } from 'lucide-react'
+import { UserCircle, KeyRound, LogOut, ChevronDown, Settings, Check, Building2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useBusinessContext } from '@/lib/business/context'
+import { hasPermission } from '@/lib/business/permissions'
 
 export default function DashboardNavbar() {
   const supabase = createClient()
   const router = useRouter()
   const [email, setEmail] = useState<string | null>(null)
+  const [businessDropdownOpen, setBusinessDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const { currentBusiness, currentRole, businesses, switchBusiness, isLoading } =
+    useBusinessContext()
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -26,44 +33,145 @@ export default function DashboardNavbar() {
     })
   }, [])
 
+  // Close business dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setBusinessDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const role = currentRole ?? 'readonly'
+  const canViewReports = hasPermission(role, 'canViewReports')
+  const canEditTransactions = hasPermission(role, 'canEditTransactions')
+  const canManageAccounts = hasPermission(role, 'canManageAccounts')
+  const canManageJournalEntries = hasPermission(role, 'canManageJournalEntries')
+
   return (
     <nav className="w-full border-b border-[#1E2A45] bg-[#111827] py-4">
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-12 flex justify-between items-center">
-        <div className="flex items-center gap-6">
-          <Link href="/" prefetch className="font-syne text-xl font-bold text-[#E8ECF4] hover:text-[#4F7FFF] transition-colors">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            prefetch
+            className="font-syne text-xl font-bold text-[#E8ECF4] hover:text-[#4F7FFF] transition-colors"
+          >
             Centerbase
           </Link>
+
+          {/* Business selector */}
+          <div className="relative" ref={dropdownRef}>
+            {isLoading ? (
+              <div className="h-7 w-28 bg-[#1E2A45] rounded-md animate-pulse" />
+            ) : businesses.length > 1 ? (
+              <button
+                onClick={() => setBusinessDropdownOpen((o) => !o)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#1E2A45] hover:border-[#4F7FFF] hover:bg-[#1E2A45] transition-colors"
+              >
+                <Building2 size={13} className="text-[#6B7A99]" />
+                <span className="text-[#E8ECF4] font-medium text-sm max-w-[140px] truncate">
+                  {currentBusiness?.name ?? '—'}
+                </span>
+                <ChevronDown
+                  size={13}
+                  className={`text-[#6B7A99] transition-transform ${businessDropdownOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+            ) : currentBusiness ? (
+              <div className="flex items-center gap-1.5 px-3 py-1.5">
+                <Building2 size={13} className="text-[#6B7A99]" />
+                <span className="text-[#E8ECF4] font-medium text-sm">{currentBusiness.name}</span>
+              </div>
+            ) : null}
+
+            {/* Business switcher dropdown */}
+            {businessDropdownOpen && businesses.length > 1 && (
+              <div className="absolute top-full left-0 mt-1 w-56 bg-[#111827] border border-[#1E2A45] rounded-lg shadow-xl z-50 py-1">
+                {businesses.map((bm) => (
+                  <button
+                    key={bm.business_id}
+                    onClick={() => {
+                      setBusinessDropdownOpen(false)
+                      switchBusiness(bm.business_id)
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#E8ECF4] hover:bg-[#1E2A45] transition-colors text-left"
+                  >
+                    <Building2 size={13} className="text-[#6B7A99] flex-shrink-0" />
+                    <span className="flex-1 truncate">{bm.business.name}</span>
+                    {bm.business_id === currentBusiness?.id && (
+                      <Check size={13} className="text-[#4F7FFF] flex-shrink-0" />
+                    )}
+                  </button>
+                ))}
+                <div className="border-t border-[#1E2A45] mt-1 pt-1">
+                  <Link
+                    href="/dashboard/settings"
+                    onClick={() => setBusinessDropdownOpen(false)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#4F7FFF] hover:bg-[#1E2A45] transition-colors"
+                  >
+                    + New Business
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Nav links — filtered by role */}
           <div className="flex items-center gap-1">
-            <Link
-              href="/dashboard/bookkeeping"
-              className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] px-3 py-1.5 rounded-lg hover:bg-[#1E2A45] transition-colors"
-            >
-              Transactions
-            </Link>
-            <Link
-              href="/dashboard/reports"
-              className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] px-3 py-1.5 rounded-lg hover:bg-[#1E2A45] transition-colors"
-            >
-              Reports
-            </Link>
-            <Link
-              href="/dashboard/accounts"
-              className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] px-3 py-1.5 rounded-lg hover:bg-[#1E2A45] transition-colors"
-            >
-              Accounts
-            </Link>
-            <Link
-              href="/dashboard/journal-entries"
-              className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] px-3 py-1.5 rounded-lg hover:bg-[#1E2A45] transition-colors"
-            >
-              Journal Entries
-            </Link>
+            {canEditTransactions && (
+              <Link
+                href="/dashboard/bookkeeping"
+                className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] px-3 py-1.5 rounded-lg hover:bg-[#1E2A45] transition-colors"
+              >
+                Transactions
+              </Link>
+            )}
+            {canViewReports && (
+              <Link
+                href="/dashboard/reports"
+                className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] px-3 py-1.5 rounded-lg hover:bg-[#1E2A45] transition-colors"
+              >
+                Reports
+              </Link>
+            )}
+            {canManageAccounts && (
+              <Link
+                href="/dashboard/accounts"
+                className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] px-3 py-1.5 rounded-lg hover:bg-[#1E2A45] transition-colors"
+              >
+                Accounts
+              </Link>
+            )}
+            {canManageJournalEntries && (
+              <Link
+                href="/dashboard/journal-entries"
+                className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] px-3 py-1.5 rounded-lg hover:bg-[#1E2A45] transition-colors"
+              >
+                Journal Entries
+              </Link>
+            )}
+            {/* Readonly role: show only Reports */}
+            {role === 'readonly' && !canEditTransactions && !canManageAccounts && !canManageJournalEntries && (
+              <Link
+                href="/dashboard/reports"
+                className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] px-3 py-1.5 rounded-lg hover:bg-[#1E2A45] transition-colors"
+              >
+                Reports
+              </Link>
+            )}
           </div>
         </div>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-[#6B7A99] hover:text-[#E8ECF4] hover:bg-[#1E2A45]">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-[#6B7A99] hover:text-[#E8ECF4] hover:bg-[#1E2A45]"
+            >
               <UserCircle className="h-6 w-6" />
             </Button>
           </DropdownMenuTrigger>
@@ -79,6 +187,13 @@ export default function DashboardNavbar() {
                 <DropdownMenuSeparator className="bg-[#1E2A45]" />
               </>
             )}
+            <DropdownMenuItem
+              className="flex items-center gap-2 px-3 py-2 text-sm text-[#E8ECF4] hover:bg-[#1E2A45] cursor-pointer focus:bg-[#1E2A45] focus:text-[#E8ECF4]"
+              onClick={() => router.push('/dashboard/settings')}
+            >
+              <Settings className="h-4 w-4 text-[#6B7A99]" />
+              Settings
+            </DropdownMenuItem>
             <DropdownMenuItem
               className="flex items-center gap-2 px-3 py-2 text-sm text-[#E8ECF4] hover:bg-[#1E2A45] cursor-pointer focus:bg-[#1E2A45] focus:text-[#E8ECF4]"
               onClick={() => router.push('/dashboard/change-password')}

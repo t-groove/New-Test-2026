@@ -174,11 +174,12 @@ interface Props {
   data: BalanceSheetData;
   asOfDate: string;
   onDateChange: (date: string) => void;
+  businessName?: string;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function BalanceSheet({ data, asOfDate, onDateChange }: Props) {
+export default function BalanceSheet({ data, asOfDate, onDateChange, businessName = "Your Business" }: Props) {
   const displayDate = (() => {
     const [year, month, day] = asOfDate.split("-").map(Number);
     return new Date(year, month - 1, day).toLocaleDateString("en-US", {
@@ -204,7 +205,7 @@ export default function BalanceSheet({ data, asOfDate, onDateChange }: Props) {
         {/* Statement header */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
           <div>
-            <h2 className="font-syne text-xl font-bold text-[#E8ECF4]">Your Business</h2>
+            <h2 className="font-syne text-xl font-bold text-[#E8ECF4]">{businessName}</h2>
             <p className="text-sm text-[#6B7A99]">Balance Sheet</p>
             <p className="text-sm text-[#6B7A99] mt-0.5">As of {displayDate}</p>
           </div>

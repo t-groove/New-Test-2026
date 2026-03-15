@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "../../../../supabase/server";
+import { getCurrentBusinessId } from "@/lib/business/actions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ export interface JournalEntryLine {
 export interface JournalEntry {
   id: string;
   user_id: string;
+  business_id: string | null;
   date: string;
   description: string;
   entry_type: string;
@@ -48,10 +50,13 @@ export async function getJournalEntries(): Promise<JournalEntry[]> {
   } = await supabase.auth.getUser();
   if (!user) return [];
 
+  const businessId = await getCurrentBusinessId(supabase);
+  if (!businessId) return [];
+
   const { data, error } = await supabase
     .from("journal_entries")
     .select("*, journal_entry_lines(*)")
-    .eq("user_id", user.id)
+    .eq("business_id", businessId)
     .order("date", { ascending: false });
 
   if (error || !data) return [];
@@ -74,6 +79,9 @@ export async function createJournalEntry(data: {
     } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const totalDebits = data.lines.reduce((s, l) => s + l.debit, 0);
     const totalCredits = data.lines.reduce((s, l) => s + l.credit, 0);
     const isBalanced = Math.abs(totalDebits - totalCredits) < 0.01 && totalDebits > 0;
@@ -89,6 +97,7 @@ export async function createJournalEntry(data: {
       .from("journal_entries")
       .insert({
         user_id: user.id,
+        business_id: businessId,
         date: data.date,
         description: data.description,
         entry_type: data.entry_type,
@@ -148,11 +157,14 @@ export async function deleteJournalEntry(
     } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const { error } = await supabase
       .from("journal_entries")
       .delete()
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("business_id", businessId);
 
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -171,10 +183,13 @@ export async function getAccumulatedDepreciation(asOfDate: string): Promise<numb
     } = await supabase.auth.getUser();
     if (!user) return 0;
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return 0;
+
     const { data: entries } = await supabase
       .from("journal_entries")
       .select("id")
-      .eq("user_id", user.id)
+      .eq("business_id", businessId)
       .lte("date", asOfDate);
 
     if (!entries || entries.length === 0) return 0;
@@ -202,10 +217,13 @@ export async function getDepreciationExpense(year: number): Promise<number> {
     } = await supabase.auth.getUser();
     if (!user) return 0;
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return 0;
+
     const { data: entries } = await supabase
       .from("journal_entries")
       .select("id")
-      .eq("user_id", user.id)
+      .eq("business_id", businessId)
       .gte("date", `${year}-01-01`)
       .lte("date", `${year}-12-31`);
 

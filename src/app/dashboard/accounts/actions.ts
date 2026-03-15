@@ -1,10 +1,12 @@
 "use server";
 
 import { createClient } from "../../../../supabase/server";
+import { getCurrentBusinessId } from "@/lib/business/actions";
 
 export interface BankAccount {
   id: string;
   user_id: string;
+  business_id: string | null;
   name: string;
   bank_name: string;
   account_type: "checking" | "savings" | "credit_card" | "cash" | "other";
@@ -27,10 +29,13 @@ export async function getBankAccounts(): Promise<BankAccount[]> {
   } = await supabase.auth.getUser();
   if (!user) return [];
 
+  const businessId = await getCurrentBusinessId(supabase);
+  if (!businessId) return [];
+
   const { data, error } = await supabase
     .from("bank_accounts")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("business_id", businessId)
     .eq("is_active", true)
     .order("created_at", { ascending: true });
 
@@ -51,10 +56,14 @@ export async function createBankAccount(data: {
     } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const { data: account, error } = await supabase
       .from("bank_accounts")
       .insert({
         user_id: user.id,
+        business_id: businessId,
         name: data.name,
         bank_name: data.bank_name,
         account_type: data.account_type,
@@ -81,11 +90,14 @@ export async function updateBankAccount(
     } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const { error } = await supabase
       .from("bank_accounts")
       .update(data)
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("business_id", businessId);
 
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -104,11 +116,14 @@ export async function deleteBankAccount(
     } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const { error } = await supabase
       .from("bank_accounts")
       .update({ is_active: false })
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("business_id", businessId);
 
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -128,11 +143,14 @@ export async function assignTransactionsToAccount(
     } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Not authenticated" };
 
+    const businessId = await getCurrentBusinessId(supabase);
+    if (!businessId) return { success: false, error: "No business found" };
+
     const { error } = await supabase
       .from("transactions")
       .update({ account_id: accountId })
       .in("id", transactionIds)
-      .eq("user_id", user.id);
+      .eq("business_id", businessId);
 
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -148,13 +166,16 @@ export async function getAccountSummary(): Promise<AccountSummary[]> {
   } = await supabase.auth.getUser();
   if (!user) return [];
 
+  const businessId = await getCurrentBusinessId(supabase);
+  if (!businessId) return [];
+
   const accounts = await getBankAccounts();
   if (accounts.length === 0) return [];
 
   const { data: transactions } = await supabase
     .from("transactions")
     .select("account_id, type, amount")
-    .eq("user_id", user.id);
+    .eq("business_id", businessId);
 
   const summaryMap = new Map<string, { count: number; income: number; expenses: number }>();
   for (const acc of accounts) {

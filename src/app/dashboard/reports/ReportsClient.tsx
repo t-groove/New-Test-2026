@@ -237,9 +237,10 @@ interface Props {
   initialYear: number;
   initialAccounts: BankAccount[];
   initialBalanceData: BalanceSheetData;
+  businessName?: string;
 }
 
-export default function ReportsClient({ initialData, initialYear, initialAccounts, initialBalanceData }: Props) {
+export default function ReportsClient({ initialData, initialYear, initialAccounts, initialBalanceData, businessName = "Your Business" }: Props) {
   const [data, setData] = useState<ReportData>(initialData);
   const [year, setYear] = useState(initialYear);
   const [selectedAccountId, setSelectedAccountId] = useState("");
@@ -405,6 +406,7 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
           year={year}
           accounts={initialAccounts}
           selectedAccountId={selectedAccountId}
+          businessName={businessName}
         />
       )}
 
@@ -414,6 +416,7 @@ export default function ReportsClient({ initialData, initialYear, initialAccount
           data={balanceData}
           asOfDate={balanceAsOfDate}
           onDateChange={handleBalanceDateChange}
+          businessName={businessName}
         />
       )}
 
