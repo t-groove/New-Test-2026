@@ -71,15 +71,25 @@ function downloadStatementCSV(statement: StatementData, year: number) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
+const stickyLeft = { boxShadow: '4px 0 8px rgba(0,0,0,0.3)' } as const;
+const stickyRight = { boxShadow: '-4px 0 8px rgba(0,0,0,0.3)' } as const;
+
 function SectionHeaderRow({ label, colCount }: { label: string; colCount: number }) {
   return (
     <tr className="bg-[#0A0F1E]">
       <td
-        colSpan={colCount + 2}
-        className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#6B7A99]"
+        className="sticky left-0 bg-[#0A0F1E] px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#6B7A99] z-10"
+        style={stickyLeft}
       >
         {label}
       </td>
+      {Array.from({ length: colCount }).map((_, i) => (
+        <td key={i} className="bg-[#0A0F1E]" />
+      ))}
+      <td
+        className="sticky right-0 bg-[#0A0F1E] border-l border-[#1E2A45] min-w-[110px] z-10"
+        style={stickyRight}
+      />
     </tr>
   );
 }
@@ -102,7 +112,10 @@ interface CategoryRowProps {
 function CategoryRow({ label, monthly, total, indent = true }: CategoryRowProps) {
   return (
     <tr className="hover:bg-[#1E2A45]/20 transition-colors">
-      <td className={`px-4 py-1.5 text-sm text-[#E8ECF4] min-w-[180px] lg:min-w-[220px] ${indent ? "pl-8" : "pl-4"}`}>
+      <td
+        className={`sticky left-0 bg-[#111827] px-4 py-1.5 text-sm text-[#E8ECF4] min-w-[180px] lg:min-w-[220px] z-10 ${indent ? "pl-8" : "pl-4"}`}
+        style={stickyLeft}
+      >
         {label}
       </td>
       {monthly.map((v, i) => (
@@ -116,9 +129,10 @@ function CategoryRow({ label, monthly, total, indent = true }: CategoryRowProps)
         </td>
       ))}
       <td
-        className={`px-3 py-1.5 text-right text-sm font-semibold min-w-[100px] tabular-nums bg-[#111827] border-l border-[#1E2A45] ${
+        className={`sticky right-0 bg-[#111827] px-3 py-1.5 text-right text-sm font-semibold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10 ${
           total === 0 ? "text-[#6B7A99]" : total < 0 ? "text-[#EF4444]" : "text-[#E8ECF4]"
         }`}
+        style={stickyRight}
       >
         {fmt(total)}
       </td>
@@ -135,7 +149,10 @@ interface TotalRowProps {
 function TotalRow({ label, monthly, total }: TotalRowProps) {
   return (
     <tr className="bg-[#111827] border-t border-[#1E2A45]">
-      <td className="px-4 py-2 text-sm font-semibold text-[#E8ECF4] min-w-[180px] lg:min-w-[220px]">
+      <td
+        className="sticky left-0 bg-[#111827] px-4 py-2 text-sm font-semibold text-[#E8ECF4] min-w-[180px] lg:min-w-[220px] z-10"
+        style={stickyLeft}
+      >
         {label}
       </td>
       {monthly.map((v, i) => (
@@ -149,9 +166,10 @@ function TotalRow({ label, monthly, total }: TotalRowProps) {
         </td>
       ))}
       <td
-        className={`px-3 py-2 text-right text-sm font-semibold min-w-[100px] tabular-nums bg-[#111827] border-l border-[#1E2A45] ${
+        className={`sticky right-0 bg-[#111827] px-3 py-2 text-right text-sm font-semibold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10 ${
           total === 0 ? "text-[#6B7A99]" : total < 0 ? "text-[#EF4444]" : "text-[#E8ECF4]"
         }`}
+        style={stickyRight}
       >
         {fmt(total)}
       </td>
@@ -169,7 +187,10 @@ function ProfitRow({ label, monthly, total }: ProfitRowProps) {
   const color = total > 0 ? "#22C55E" : total < 0 ? "#EF4444" : "#6B7A99";
   return (
     <tr className="bg-[#0A0F1E] border-t-2 border-[#1E2A45]">
-      <td className="px-4 py-2.5 text-sm font-bold font-syne text-[#E8ECF4] min-w-[180px] lg:min-w-[220px]">
+      <td
+        className="sticky left-0 bg-[#0A0F1E] px-4 py-2.5 text-sm font-bold font-syne text-[#E8ECF4] min-w-[180px] lg:min-w-[220px] z-10"
+        style={stickyLeft}
+      >
         {label}
       </td>
       {monthly.map((v, i) => {
@@ -185,8 +206,8 @@ function ProfitRow({ label, monthly, total }: ProfitRowProps) {
         );
       })}
       <td
-        className="px-3 py-2.5 text-right text-sm font-bold min-w-[100px] tabular-nums bg-[#111827] border-l border-[#1E2A45]"
-        style={{ color }}
+        className="sticky right-0 bg-[#0A0F1E] px-3 py-2.5 text-right text-sm font-bold min-w-[110px] tabular-nums border-l border-[#1E2A45] z-10"
+        style={{ color, ...stickyRight }}
       >
         {fmtSign(total)}
       </td>
@@ -261,21 +282,26 @@ export default function PLStatement({ statement, year }: PLStatementProps) {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto relative">
           <table className="w-full min-w-[900px] border-collapse">
             <thead>
               <tr className="border-b border-[#1E2A45]">
-                <th className="px-4 py-2.5 text-left text-xs font-semibold text-[#6B7A99] uppercase tracking-wider min-w-[180px] lg:min-w-[220px]">
-                </th>
+                <th
+                  className="sticky left-0 bg-[#111827] px-4 py-3 text-left text-xs font-medium text-[#6B7A99] uppercase tracking-wider min-w-[180px] lg:min-w-[220px] z-10"
+                  style={stickyLeft}
+                />
                 {months.map((m) => (
                   <th
                     key={m}
-                    className="px-3 py-2.5 text-right text-xs font-semibold text-[#6B7A99] uppercase tracking-wider min-w-[80px] lg:min-w-[100px]"
+                    className="px-3 py-3 text-right text-xs font-medium text-[#6B7A99] uppercase tracking-wider min-w-[80px] lg:min-w-[100px]"
                   >
                     {m}
                   </th>
                 ))}
-                <th className="px-3 py-2.5 text-right text-xs font-semibold text-[#6B7A99] uppercase tracking-wider min-w-[100px] bg-[#111827] border-l border-[#1E2A45]">
+                <th
+                  className="sticky right-0 bg-[#111827] border-l border-[#1E2A45] min-w-[110px] text-right px-4 py-3 text-[#6B7A99] font-medium text-xs z-10"
+                  style={stickyRight}
+                >
                   Total
                 </th>
               </tr>

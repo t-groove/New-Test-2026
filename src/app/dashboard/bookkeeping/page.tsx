@@ -30,7 +30,7 @@ export default async function BookkeepingPage({
     <>
       <DashboardNavbar />
       <main className="w-full bg-[#0A0F1E] min-h-screen">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-12 py-8">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-12 py-8">
           <header className="mb-6">
             <h1 className="font-syne text-3xl font-bold text-[#E8ECF4]">
               Bookkeeping

@@ -20,7 +20,7 @@ export default async function AccountsPage() {
     <>
       <DashboardNavbar />
       <main className="w-full bg-[#0A0F1E] min-h-screen">
-        <div className="container mx-auto px-4 py-8">
+        <div className="w-full max-w-[1800px] mx-auto px-4 py-8">
           <AccountsClient initialAccounts={accounts} />
         </div>
       </main>
