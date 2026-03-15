@@ -63,6 +63,11 @@ export interface Transaction {
   account_name: string | null;
   raw_csv_row: string | null;
   created_at: string;
+  // Split tracking
+  is_split?: boolean;
+  parent_id?: string | null;
+  split_index?: number | null;
+  children?: Transaction[];
 }
 
 export async function getTransactions(
@@ -79,6 +84,7 @@ export async function getTransactions(
     .from("transactions")
     .select("*")
     .eq("user_id", user.id)
+    .is("parent_id", null) // top-level only; children are fetched separately
     .order("date", { ascending: false });
 
   if (filters?.startDate) {
@@ -99,7 +105,31 @@ export async function getTransactions(
 
   const { data, error } = await query;
   if (error) return [];
-  return (data as Transaction[]) ?? [];
+
+  let transactions = (data as Transaction[]) ?? [];
+
+  // Hydrate split parents with their child transactions
+  const splitParentIds = transactions.filter((t) => t.is_split).map((t) => t.id);
+  if (splitParentIds.length > 0) {
+    const { data: children } = await supabase
+      .from("transactions")
+      .select("*")
+      .in("parent_id", splitParentIds)
+      .order("split_index", { ascending: true });
+
+    const childrenByParent = new Map<string, Transaction[]>();
+    for (const child of (children as Transaction[]) ?? []) {
+      const parentId = child.parent_id!;
+      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+      childrenByParent.get(parentId)!.push(child);
+    }
+    transactions = transactions.map((t) => ({
+      ...t,
+      children: childrenByParent.get(t.id) ?? [],
+    }));
+  }
+
+  return transactions;
 }
 
 export async function updateTransactionCategory(
@@ -240,6 +270,120 @@ export async function updateTransaction(
       .eq("user_id", user.id);
 
     if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+export async function splitTransaction(
+  parentId: string,
+  splits: Array<{
+    description: string;
+    amount: number;
+    category: string;
+    account_type: string;
+    type: "income" | "expense";
+  }>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Not authenticated" };
+
+    // Fetch the parent transaction
+    const { data: parent, error: fetchError } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("id", parentId)
+      .eq("user_id", user.id)
+      .single();
+    if (fetchError || !parent) return { success: false, error: "Transaction not found" };
+
+    // Parent must be a top-level transaction
+    if (parent.parent_id) return { success: false, error: "Cannot split a child transaction" };
+
+    // Verify amounts balance within $0.01
+    const total = splits.reduce((s, sp) => s + sp.amount, 0);
+    if (Math.abs(total - Number(parent.amount)) > 0.01) {
+      return { success: false, error: `Split amounts ($${total.toFixed(2)}) must equal transaction amount ($${Number(parent.amount).toFixed(2)})` };
+    }
+
+    // If already split, delete existing children first
+    if (parent.is_split) {
+      const { error: delError } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("parent_id", parentId);
+      if (delError) return { success: false, error: delError.message };
+    }
+
+    // Mark parent as split
+    const { error: updateError } = await supabase
+      .from("transactions")
+      .update({ is_split: true })
+      .eq("id", parentId);
+    if (updateError) return { success: false, error: updateError.message };
+
+    // Insert child rows
+    const childRows = splits.map((sp, idx) => ({
+      user_id: user.id,
+      date: parent.date,
+      description: sp.description,
+      amount: sp.amount,
+      type: sp.type,
+      category: sp.category,
+      account_type: sp.account_type,
+      account_id: parent.account_id,
+      raw_csv_row: null,
+      parent_id: parentId,
+      split_index: idx,
+      is_split: false,
+    }));
+    const { error: insertError } = await supabase.from("transactions").insert(childRows);
+    if (insertError) return { success: false, error: insertError.message };
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+export async function unsplitTransaction(
+  parentId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Not authenticated" };
+
+    // Verify ownership
+    const { data: parent, error: fetchError } = await supabase
+      .from("transactions")
+      .select("id")
+      .eq("id", parentId)
+      .eq("user_id", user.id)
+      .single();
+    if (fetchError || !parent) return { success: false, error: "Transaction not found" };
+
+    // Delete all children (cascade handled by DB, but explicit is safer)
+    const { error: delError } = await supabase
+      .from("transactions")
+      .delete()
+      .eq("parent_id", parentId);
+    if (delError) return { success: false, error: delError.message };
+
+    // Clear split flag
+    const { error: updateError } = await supabase
+      .from("transactions")
+      .update({ is_split: false })
+      .eq("id", parentId);
+    if (updateError) return { success: false, error: updateError.message };
+
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };

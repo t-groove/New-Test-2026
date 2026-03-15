@@ -155,7 +155,7 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
   const [{ data: transactions }, { data: bankAccountsRaw }] = await Promise.all([
     supabase
       .from("transactions")
-      .select("date, amount, type, category, account_type, account_id")
+      .select("date, amount, type, category, account_type, account_id, is_split, parent_id")
       .eq("user_id", user.id)
       .lte("date", asOfDate),
     supabase
@@ -194,6 +194,8 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
   }
   let unassignedBal = 0;
   for (const t of transactions) {
+    // Skip children — the parent row represents the actual bank cash movement
+    if (t.parent_id) continue;
     const effect = t.type === "income" ? Number(t.amount) : -Number(t.amount);
     if (t.account_id && accountBalMap.has(t.account_id)) {
       accountBalMap.set(t.account_id, accountBalMap.get(t.account_id)! + effect);
@@ -313,6 +315,7 @@ export async function getBalanceSheetData(asOfDate: string): Promise<BalanceShee
   let currentExpenses = 0;
 
   for (const t of transactions) {
+    if (t.is_split) continue; // split parents are double-counted via children
     if (t.account_type !== "Income" && t.account_type !== "Expense") continue;
     const amt = Number(t.amount);
     const isPrior = t.date < yearStart;
@@ -397,7 +400,7 @@ export async function getReportData(year: number, accountId?: string): Promise<R
   // Fetch transactions for the given year
   let query = supabase
     .from("transactions")
-    .select("date, amount, type, category, account_type")
+    .select("date, amount, type, category, account_type, is_split")
     .eq("user_id", user.id)
     .gte("date", `${year}-01-01`)
     .lte("date", `${year}-12-31`);
@@ -424,9 +427,9 @@ export async function getReportData(year: number, accountId?: string): Promise<R
     return { ...empty, availableYears };
   }
 
-  // Only include Income and Expense account_type transactions on P&L
+  // Only include Income and Expense; exclude split parents (children carry the categorised amounts)
   const plTransactions = transactions.filter(
-    (t) => t.account_type === "Income" || t.account_type === "Expense"
+    (t) => (t.account_type === "Income" || t.account_type === "Expense") && !t.is_split
   );
 
   const monthlyIncome = new Array(12).fill(0);

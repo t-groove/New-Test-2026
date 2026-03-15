@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useMemo, useTransition, useEffect } from "react";
+import { useState, useRef, useCallback, useMemo, useTransition, useEffect, Fragment } from "react";
 import { parseCSV } from "@/lib/bookkeeping/parse-csv";
 import type { ParsedTransaction } from "@/lib/bookkeeping/parse-csv";
 import {
@@ -10,6 +10,7 @@ import {
   EQUITY_CATEGORIES,
   LIABILITY_CATEGORIES,
   TRANSFER_CATEGORIES,
+  CATEGORY_ACCOUNT_TYPE,
 } from "@/lib/bookkeeping/categories";
 import {
   uploadTransactions,
@@ -19,6 +20,8 @@ import {
   createTransaction,
   updateTransactionDescription,
   updateTransaction,
+  splitTransaction,
+  unsplitTransaction,
 } from "./actions";
 import type { Transaction } from "./actions";
 import {
@@ -32,11 +35,13 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Download,
   X,
   BookOpen,
   Plus,
   Pencil,
+  Scissors,
 } from "lucide-react";
 
 const PAGE_SIZE = 50;
@@ -457,6 +462,219 @@ function UploadPanel({ bankAccounts, onImportSuccess, onAccountCreated }: Upload
   );
 }
 
+// ── Split Panel ────────────────────────────────────────────────────────────
+
+interface SplitLine {
+  description: string;
+  category: string;
+  amount: string;
+  type: "income" | "expense";
+}
+
+interface SplitPanelProps {
+  transaction: Transaction;
+  onSave: (
+    splits: Array<{
+      description: string;
+      amount: number;
+      category: string;
+      account_type: string;
+      type: "income" | "expense";
+    }>
+  ) => Promise<void>;
+  onCancel: () => void;
+  isSaving: boolean;
+}
+
+function SplitPanel({ transaction, onSave, onCancel, isSaving }: SplitPanelProps) {
+  const total = Number(transaction.amount);
+
+  const makeDefaultLines = (): SplitLine[] => {
+    if (transaction.is_split && (transaction.children ?? []).length >= 2) {
+      return (transaction.children ?? []).map((c) => ({
+        description: c.description,
+        category: c.category,
+        amount: String(Number(c.amount).toFixed(2)),
+        type: c.type,
+      }));
+    }
+    return [
+      { description: transaction.description, category: transaction.category, amount: String(total.toFixed(2)), type: transaction.type },
+      { description: transaction.description, category: transaction.category, amount: "0.00", type: transaction.type },
+    ];
+  };
+
+  const [lines, setLines] = useState<SplitLine[]>(makeDefaultLines);
+
+  const allocated = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+  const remaining = total - allocated;
+  const isBalanced = Math.abs(remaining) < 0.005;
+
+  const inputCls =
+    "bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#4F7FFF] placeholder:text-[#6B7A99]";
+
+  const updateLine = (idx: number, field: keyof SplitLine, value: string) => {
+    setLines((prev) => {
+      const next = prev.map((l, i) => (i === idx ? { ...l, [field]: value } : l));
+      // Auto-update last line amount when a non-last line's amount changes
+      if (field === "amount" && idx !== prev.length - 1) {
+        const othersSum = next.slice(0, -1).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+        const lastAmt = Math.max(0, total - othersSum);
+        next[next.length - 1] = { ...next[next.length - 1], amount: lastAmt.toFixed(2) };
+      }
+      return next;
+    });
+  };
+
+  const removeLine = (idx: number) => {
+    if (lines.length <= 2) return;
+    setLines((prev) => {
+      const next = prev.filter((_, i) => i !== idx);
+      // Recalculate last line
+      const othersSum = next.slice(0, -1).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const lastAmt = Math.max(0, total - othersSum);
+      next[next.length - 1] = { ...next[next.length - 1], amount: lastAmt.toFixed(2) };
+      return next;
+    });
+  };
+
+  const addLine = () => {
+    setLines((prev) => {
+      const next = [
+        ...prev,
+        { description: transaction.description, category: transaction.category, amount: "0.00", type: transaction.type },
+      ];
+      // Recalculate last line
+      const othersSum = next.slice(0, -1).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const lastAmt = Math.max(0, total - othersSum);
+      next[next.length - 1] = { ...next[next.length - 1], amount: lastAmt.toFixed(2) };
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    if (!isBalanced) return;
+    const splits = lines.map((l) => ({
+      description: l.description.trim() || transaction.description,
+      amount: Number(l.amount),
+      category: l.category,
+      account_type: CATEGORY_ACCOUNT_TYPE[l.category] ?? "Expense",
+      type: l.type,
+    }));
+    await onSave(splits);
+  };
+
+  return (
+    <div className="bg-[#0A0F1E] border border-[#A855F7]/30 rounded-lg mx-4 mb-2 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-sm font-medium text-[#E8ECF4]">Split Transaction</p>
+          <p className="text-xs text-[#6B7A99]">
+            {transaction.description} — {formatCurrency(total)}
+          </p>
+        </div>
+      </div>
+
+      {/* Split lines */}
+      <div className="space-y-2 mb-3">
+        <div className="grid grid-cols-[1.5rem_1fr_10rem_6rem_1.5rem] gap-2 items-center">
+          <span className="text-xs text-[#6B7A99] text-center">#</span>
+          <span className="text-xs text-[#6B7A99]">Description</span>
+          <span className="text-xs text-[#6B7A99]">Category</span>
+          <span className="text-xs text-[#6B7A99] text-right">Amount</span>
+          <span />
+        </div>
+
+        {lines.map((line, idx) => (
+          <div key={idx} className="grid grid-cols-[1.5rem_1fr_10rem_6rem_1.5rem] gap-2 items-center">
+            <span className="text-xs text-[#6B7A99] text-center">{idx + 1}</span>
+            <input
+              type="text"
+              value={line.description}
+              onChange={(e) => updateLine(idx, "description", e.target.value)}
+              placeholder="Description"
+              className={`${inputCls} w-full`}
+            />
+            <select
+              value={line.category}
+              onChange={(e) => updateLine(idx, "category", e.target.value)}
+              className={`${inputCls} w-full`}
+            >
+              <option value="Uncategorized">Uncategorized</option>
+              <optgroup label="── Income ──">
+                {INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </optgroup>
+              <optgroup label="── Expenses ──">
+                {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </optgroup>
+              <optgroup label="── Equity ──">
+                {EQUITY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </optgroup>
+              <optgroup label="── Liabilities ──">
+                {LIABILITY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </optgroup>
+              <optgroup label="── Transfers ──">
+                {TRANSFER_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </optgroup>
+              <optgroup label="── Fixed Assets (Advanced) ──">
+                {ASSET_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </optgroup>
+            </select>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={line.amount}
+              onChange={(e) => updateLine(idx, "amount", e.target.value)}
+              className={`${inputCls} w-full text-right`}
+            />
+            <button
+              onClick={() => removeLine(idx)}
+              disabled={lines.length <= 2}
+              className="p-0.5 text-[#6B7A99] hover:text-[#EF4444] disabled:opacity-30 transition-colors"
+              title="Remove line"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Add line */}
+      <button
+        onClick={addLine}
+        className="text-xs text-[#4F7FFF] hover:underline mb-4"
+      >
+        + Add split line
+      </button>
+
+      {/* Balance summary */}
+      <div className={`flex items-center gap-4 text-xs mb-4 px-2 py-1.5 rounded ${isBalanced ? "bg-[#22C55E]/10 text-[#22C55E]" : "bg-[#EF4444]/10 text-[#EF4444]"}`}>
+        <span>Allocated: {formatCurrency(allocated)}</span>
+        <span>Remaining: {formatCurrency(Math.abs(remaining))}{remaining < 0 ? " over" : ""}</span>
+        <span className="font-medium">{isBalanced ? "✓ Balanced" : "✗ Not balanced"}</span>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        <button
+          onClick={handleSave}
+          disabled={!isBalanced || isSaving}
+          className="px-4 py-1.5 bg-[#A855F7] hover:bg-[#9333EA] disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+        >
+          {isSaving ? "Saving…" : "Save Split"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-1.5 border border-[#1E2A45] text-[#6B7A99] hover:text-[#E8ECF4] text-xs rounded-lg transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main client component ──────────────────────────────────────────────────
 
 interface BookkeepingClientProps {
@@ -529,6 +747,11 @@ export default function BookkeepingClient({
   // Success flash cell id
   const [successCellId, setSuccessCellId] = useState<string | null>(null);
 
+  // Split panel
+  const [splitPanelTxId, setSplitPanelTxId] = useState<string | null>(null);
+  const [isSplitting, setIsSplitting] = useState(false);
+  const [expandedSplitIds, setExpandedSplitIds] = useState<Set<string>>(new Set());
+
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
@@ -562,13 +785,18 @@ export default function BookkeepingClient({
     });
   }, [transactions, filterType, filterCategory, filterStart, filterEnd, filterAccount, search]);
 
-  const totalIncome = useMemo(
-    () => filtered.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0),
+  // For summary, replace split parents with their children to avoid double-counting
+  const summaryTxns = useMemo(
+    () => filtered.flatMap((t) => (t.is_split ? (t.children ?? []) : [t])),
     [filtered]
   );
+  const totalIncome = useMemo(
+    () => summaryTxns.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0),
+    [summaryTxns]
+  );
   const totalExpenses = useMemo(
-    () => filtered.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0),
-    [filtered]
+    () => summaryTxns.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0),
+    [summaryTxns]
   );
   const netProfit = totalIncome - totalExpenses;
 
@@ -809,6 +1037,49 @@ export default function BookkeepingClient({
       setTransactions((prev) => prev.map((t) => (t.id === id ? tx : t)));
       showToast("Failed to update transaction", "error");
     }
+  };
+
+  const handleSaveSplit = async (
+    parentId: string,
+    splits: Array<{ description: string; amount: number; category: string; account_type: string; type: "income" | "expense" }>
+  ) => {
+    setIsSplitting(true);
+    const result = await splitTransaction(parentId, splits);
+    if (result.success) {
+      const fresh = await getTransactions();
+      setTransactions(fresh);
+      setSplitPanelTxId(null);
+      setExpandedSplitIds((prev) => { const s = new Set(prev); s.add(parentId); return s; });
+      showToast("Transaction split successfully", "success");
+    } else {
+      showToast(result.error ?? "Failed to split transaction", "error");
+    }
+    setIsSplitting(false);
+  };
+
+  const handleUnsplit = async (parentId: string) => {
+    const result = await unsplitTransaction(parentId);
+    if (result.success) {
+      const fresh = await getTransactions();
+      setTransactions(fresh);
+      setExpandedSplitIds((prev) => {
+        const next = new Set(prev);
+        next.delete(parentId);
+        return next;
+      });
+      showToast("Transaction unsplit", "success");
+    } else {
+      showToast("Failed to unsplit transaction", "error");
+    }
+  };
+
+  const toggleSplitExpanded = (id: string) => {
+    setExpandedSplitIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const inputCls =
@@ -1182,13 +1453,14 @@ export default function BookkeepingClient({
           <>
             {/* Table */}
             <div className="overflow-x-auto rounded-lg border border-[#1E2A45]">
-              <table className="w-full text-sm table-fixed min-w-[800px]">
+              <table className="w-full text-sm table-fixed min-w-[860px]">
                 <colgroup>
                   <col className="w-10" />
                   <col className="w-32" />
                   <col className="w-36" />
                   <col />
                   <col className="w-44" />
+                  <col className="w-12" />
                   <col className="w-24" />
                   <col className="w-28" />
                   <col className="w-10" />
@@ -1207,6 +1479,7 @@ export default function BookkeepingClient({
                     <th className="px-4 py-3 text-[#6B7A99] font-medium text-left">Account</th>
                     <th className="px-4 py-3 text-[#6B7A99] font-medium text-left">Description</th>
                     <th className="px-4 py-3 text-[#6B7A99] font-medium text-left">Category</th>
+                    <th className="px-2 py-3" />
                     <th className="px-4 py-3 text-[#6B7A99] font-medium text-left">Type</th>
                     <th className="px-4 py-3 text-[#6B7A99] font-medium text-right">Amount</th>
                     <th className="px-4 py-3" />
@@ -1216,258 +1489,418 @@ export default function BookkeepingClient({
                   {paginated.map((t) => {
                     const linkedAccount = t.account_id ? accountMap.get(t.account_id) : null;
                     const isAssigning = assigningTxId === t.id;
+                    const isSplitParent = !!t.is_split;
+                    const isExpanded = expandedSplitIds.has(t.id);
+                    const splitChildren = t.children ?? [];
 
                     return (
-                      <tr
-                        key={t.id}
-                        className={`group border-b border-[#1E2A45] last:border-0 transition-colors ${
-                          selectedIds.has(t.id)
-                            ? "bg-[#4F7FFF]/5"
-                            : "hover:bg-[#1E2A45]/20"
-                        }`}
-                      >
-                        {/* Checkbox */}
-                        <td className="px-3 py-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(t.id)}
-                            onChange={() => toggleSelect(t.id)}
-                            className="rounded border-[#1E2A45] accent-[#4F7FFF] cursor-pointer"
-                          />
-                        </td>
-
-                        {/* Date */}
-                        <td className={`px-4 py-3 whitespace-nowrap ${successCellId === `${t.id}-date` ? "ring-1 ring-[#22C55E] rounded" : ""}`}>
-                          {editingCell?.id === t.id && editingCell?.field === "date" ? (
+                      <Fragment key={t.id}>
+                        {/* ── Main row ──────────────────────────────────── */}
+                        <tr
+                          className={`group border-b border-[#1E2A45] transition-colors ${
+                            selectedIds.has(t.id)
+                              ? "bg-[#4F7FFF]/5"
+                              : isSplitParent
+                              ? "bg-[#A855F7]/5 hover:bg-[#A855F7]/10"
+                              : "hover:bg-[#1E2A45]/20"
+                          }`}
+                        >
+                          {/* Checkbox */}
+                          <td className="px-3 py-3">
                             <input
-                              autoFocus
-                              type="date"
-                              value={editingCell.value}
-                              onChange={(e) =>
-                                setEditingCell((c) => c ? { ...c, value: e.target.value } : null)
-                              }
-                              onBlur={(e) => {
-                                if (cellEditCancelledRef.current) {
-                                  cellEditCancelledRef.current = false;
-                                  return;
-                                }
-                                handleUpdateField(t.id, "date", e.currentTarget.value);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") e.currentTarget.blur();
-                                if (e.key === "Escape") {
-                                  cellEditCancelledRef.current = true;
-                                  setEditingCell(null);
-                                }
-                              }}
-                              className="bg-[#0A0F1E] border border-[#4F7FFF] rounded px-2 py-1 text-sm text-[#E8ECF4] focus:outline-none"
+                              type="checkbox"
+                              checked={selectedIds.has(t.id)}
+                              onChange={() => toggleSelect(t.id)}
+                              className="rounded border-[#1E2A45] accent-[#4F7FFF] cursor-pointer"
                             />
-                          ) : (
-                            <span
-                              className="text-[#E8ECF4] cursor-pointer hover:underline"
-                              onClick={() => setEditingCell({ id: t.id, field: "date", value: t.date })}
-                              title="Click to edit date"
-                            >
-                              {formatDate(t.date)}
-                            </span>
-                          )}
-                        </td>
+                          </td>
 
-                        {/* Account */}
-                        <td className="px-4 py-3">
-                          {linkedAccount ? (
-                            <span className="text-sm text-[#6B7A99] whitespace-nowrap">
-                              {linkedAccount.name}
-                            </span>
-                          ) : isAssigning ? (
-                            <div className="flex items-center gap-1">
-                              <select
+                          {/* Date */}
+                          <td className={`px-4 py-3 whitespace-nowrap ${successCellId === `${t.id}-date` ? "ring-1 ring-[#22C55E] rounded" : ""}`}>
+                            {editingCell?.id === t.id && editingCell?.field === "date" ? (
+                              <input
                                 autoFocus
-                                className="bg-[#0A0F1E] border border-[#4F7FFF] text-[#E8ECF4] rounded px-2 py-1 text-xs focus:outline-none max-w-[140px]"
-                                defaultValue=""
-                                onChange={(e) => {
-                                  if (e.target.value) handleAssignSingle(t.id, e.target.value);
+                                type="date"
+                                value={editingCell.value}
+                                onChange={(e) =>
+                                  setEditingCell((c) => c ? { ...c, value: e.target.value } : null)
+                                }
+                                onBlur={(e) => {
+                                  if (cellEditCancelledRef.current) {
+                                    cellEditCancelledRef.current = false;
+                                    return;
+                                  }
+                                  handleUpdateField(t.id, "date", e.currentTarget.value);
                                 }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") e.currentTarget.blur();
+                                  if (e.key === "Escape") {
+                                    cellEditCancelledRef.current = true;
+                                    setEditingCell(null);
+                                  }
+                                }}
+                                className="bg-[#0A0F1E] border border-[#4F7FFF] rounded px-2 py-1 text-sm text-[#E8ECF4] focus:outline-none"
+                              />
+                            ) : (
+                              <span
+                                className="text-[#E8ECF4] cursor-pointer hover:underline"
+                                onClick={() => setEditingCell({ id: t.id, field: "date", value: t.date })}
+                                title="Click to edit date"
                               >
-                                <option value="">Pick account…</option>
-                                {bankAccounts.map((acc) => (
-                                  <option key={acc.id} value={acc.id}>
-                                    {acc.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                onClick={() => setAssigningTxId(null)}
-                                className="text-[#6B7A99] hover:text-[#E8ECF4]"
-                              >
-                                <X size={12} />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 whitespace-nowrap">
-                                Unknown Account
+                                {formatDate(t.date)}
                               </span>
-                              {bankAccounts.length > 0 && (
-                                <button
-                                  onClick={() => setAssigningTxId(t.id)}
-                                  className="text-xs text-[#4F7FFF] hover:underline whitespace-nowrap"
+                            )}
+                          </td>
+
+                          {/* Account */}
+                          <td className="px-4 py-3">
+                            {linkedAccount ? (
+                              <span className="text-sm text-[#6B7A99] whitespace-nowrap">
+                                {linkedAccount.name}
+                              </span>
+                            ) : isAssigning ? (
+                              <div className="flex items-center gap-1">
+                                <select
+                                  autoFocus
+                                  className="bg-[#0A0F1E] border border-[#4F7FFF] text-[#E8ECF4] rounded px-2 py-1 text-xs focus:outline-none max-w-[140px]"
+                                  defaultValue=""
+                                  onChange={(e) => {
+                                    if (e.target.value) handleAssignSingle(t.id, e.target.value);
+                                  }}
                                 >
-                                  Assign
+                                  <option value="">Pick account…</option>
+                                  {bankAccounts.map((acc) => (
+                                    <option key={acc.id} value={acc.id}>
+                                      {acc.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => setAssigningTxId(null)}
+                                  className="text-[#6B7A99] hover:text-[#E8ECF4]"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 whitespace-nowrap">
+                                  Unknown Account
+                                </span>
+                                {bankAccounts.length > 0 && (
+                                  <button
+                                    onClick={() => setAssigningTxId(t.id)}
+                                    className="text-xs text-[#4F7FFF] hover:underline whitespace-nowrap"
+                                  >
+                                    Assign
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Description */}
+                          <td className={`px-4 py-3 min-w-0 ${successCellId === `${t.id}-description` ? "ring-1 ring-[#22C55E] rounded" : ""}`}>
+                            {editingDescriptionId === t.id ? (
+                              <input
+                                autoFocus
+                                type="text"
+                                value={editingDescriptionValue}
+                                onChange={(e) => setEditingDescriptionValue(e.target.value)}
+                                onBlur={(e) => {
+                                  if (descEditCancelledRef.current) {
+                                    descEditCancelledRef.current = false;
+                                    return;
+                                  }
+                                  handleUpdateDescription(t.id, e.currentTarget.value);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") e.currentTarget.blur();
+                                  if (e.key === "Escape") {
+                                    descEditCancelledRef.current = true;
+                                    setEditingDescriptionId(null);
+                                  }
+                                }}
+                                className="bg-[#0A0F1E] border border-[#4F7FFF] rounded px-2 py-1 text-sm text-[#E8ECF4] w-full focus:outline-none"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <div
+                                  className="truncate text-[#E8ECF4] cursor-default"
+                                  title={t.description}
+                                  onDoubleClick={() => {
+                                    setEditingDescriptionId(t.id);
+                                    setEditingDescriptionValue(t.description);
+                                  }}
+                                >
+                                  {t.description}
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setEditingDescriptionId(t.id);
+                                    setEditingDescriptionValue(t.description);
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 text-[#6B7A99] hover:text-[#4F7FFF] transition-opacity flex-shrink-0"
+                                  title="Edit description"
+                                >
+                                  <Pencil size={12} />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Category */}
+                          <td className="px-4 py-3">
+                            {isSplitParent ? (
+                              <span className="text-xs text-[#6B7A99] italic">Split transaction</span>
+                            ) : (
+                              <select
+                                value={t.category}
+                                onChange={(e) => handleCategoryChange(t.id, e.target.value)}
+                                className="bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#4F7FFF] max-w-[150px]"
+                              >
+                                <option value="Uncategorized">Uncategorized</option>
+                                <optgroup label="── Income ──">
+                                  {INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </optgroup>
+                                <optgroup label="── Expenses ──">
+                                  {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </optgroup>
+                                <optgroup label="── Equity ──">
+                                  {EQUITY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </optgroup>
+                                <optgroup label="── Liabilities ──">
+                                  {LIABILITY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </optgroup>
+                                <optgroup label="── Transfers ──">
+                                  {TRANSFER_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </optgroup>
+                                <optgroup label="── Fixed Assets (Advanced) ──">
+                                  {ASSET_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </optgroup>
+                              </select>
+                            )}
+                          </td>
+
+                          {/* Split / expand column */}
+                          <td className="px-2 py-3">
+                            <div className="flex items-center gap-0.5">
+                              {isSplitParent && (
+                                <button
+                                  onClick={() => toggleSplitExpanded(t.id)}
+                                  className="p-1 rounded text-[#A855F7] hover:bg-[#A855F7]/10 transition-colors"
+                                  title={isExpanded ? "Collapse splits" : "Expand splits"}
+                                >
+                                  <ChevronDown
+                                    size={13}
+                                    className={`transition-transform ${isExpanded ? "" : "-rotate-90"}`}
+                                  />
                                 </button>
                               )}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Description */}
-                        <td className={`px-4 py-3 min-w-0 ${successCellId === `${t.id}-description` ? "ring-1 ring-[#22C55E] rounded" : ""}`}>
-                          {editingDescriptionId === t.id ? (
-                            <input
-                              autoFocus
-                              type="text"
-                              value={editingDescriptionValue}
-                              onChange={(e) => setEditingDescriptionValue(e.target.value)}
-                              onBlur={(e) => {
-                                if (descEditCancelledRef.current) {
-                                  descEditCancelledRef.current = false;
-                                  return;
-                                }
-                                handleUpdateDescription(t.id, e.currentTarget.value);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") e.currentTarget.blur();
-                                if (e.key === "Escape") {
-                                  descEditCancelledRef.current = true;
-                                  setEditingDescriptionId(null);
-                                }
-                              }}
-                              className="bg-[#0A0F1E] border border-[#4F7FFF] rounded px-2 py-1 text-sm text-[#E8ECF4] w-full focus:outline-none"
-                            />
-                          ) : (
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <div
-                                className="truncate text-[#E8ECF4] cursor-default"
-                                title={t.description}
-                                onDoubleClick={() => {
-                                  setEditingDescriptionId(t.id);
-                                  setEditingDescriptionValue(t.description);
-                                }}
-                              >
-                                {t.description}
-                              </div>
                               <button
-                                onClick={() => {
-                                  setEditingDescriptionId(t.id);
-                                  setEditingDescriptionValue(t.description);
-                                }}
-                                className="opacity-0 group-hover:opacity-100 text-[#6B7A99] hover:text-[#4F7FFF] transition-opacity flex-shrink-0"
-                                title="Edit description"
+                                onClick={() => setSplitPanelTxId(splitPanelTxId === t.id ? null : t.id)}
+                                className={`p-1 rounded transition-colors ${
+                                  splitPanelTxId === t.id
+                                    ? "text-[#A855F7] bg-[#A855F7]/10"
+                                    : "text-[#6B7A99] hover:text-[#A855F7] hover:bg-[#A855F7]/10"
+                                }`}
+                                title="Split transaction"
                               >
-                                <Pencil size={12} />
+                                <Scissors size={13} />
                               </button>
                             </div>
-                          )}
-                        </td>
+                          </td>
 
-                        {/* Category */}
-                        <td className="px-4 py-3">
-                          <select
-                            value={t.category}
-                            onChange={(e) => handleCategoryChange(t.id, e.target.value)}
-                            className="bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#4F7FFF] max-w-[150px]"
-                          >
-                            <option value="Uncategorized">Uncategorized</option>
-                            <optgroup label="── Income ──">
-                              {INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                            </optgroup>
-                            <optgroup label="── Expenses ──">
-                              {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                            </optgroup>
-                            <optgroup label="── Equity ──">
-                              {EQUITY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                            </optgroup>
-                            <optgroup label="── Liabilities ──">
-                              {LIABILITY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                            </optgroup>
-                            <optgroup label="── Transfers ──">
-                              {TRANSFER_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                            </optgroup>
-                            <optgroup label="── Fixed Assets (Advanced) ──">
-                              {ASSET_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                            </optgroup>
-                          </select>
-                        </td>
+                          {/* Type */}
+                          <td className="px-4 py-3">
+                            {isSplitParent ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#A855F7]/10 text-[#A855F7]">
+                                Split
+                              </span>
+                            ) : (
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  t.type === "income"
+                                    ? "bg-[#22C55E]/10 text-[#22C55E]"
+                                    : "bg-[#EF4444]/10 text-[#EF4444]"
+                                }`}
+                              >
+                                {t.type === "income" ? "Income" : "Expense"}
+                              </span>
+                            )}
+                          </td>
 
-                        {/* Type */}
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              t.type === "income"
-                                ? "bg-[#22C55E]/10 text-[#22C55E]"
-                                : "bg-[#EF4444]/10 text-[#EF4444]"
-                            }`}
-                          >
-                            {t.type === "income" ? "Income" : "Expense"}
-                          </span>
-                        </td>
-
-                        {/* Amount */}
-                        <td className={`px-4 py-3 text-right font-medium whitespace-nowrap ${successCellId === `${t.id}-amount` ? "ring-1 ring-[#22C55E] rounded" : ""}`}>
-                          {editingCell?.id === t.id && editingCell?.field === "amount" ? (
-                            <input
-                              autoFocus
-                              type="number"
-                              min="0.01"
-                              step="0.01"
-                              value={editingCell.value}
-                              onChange={(e) =>
-                                setEditingCell((c) => c ? { ...c, value: e.target.value } : null)
-                              }
-                              onBlur={(e) => {
-                                if (cellEditCancelledRef.current) {
-                                  cellEditCancelledRef.current = false;
-                                  return;
+                          {/* Amount */}
+                          <td className={`px-4 py-3 text-right font-medium whitespace-nowrap ${isSplitParent ? "opacity-50" : ""} ${successCellId === `${t.id}-amount` ? "ring-1 ring-[#22C55E] rounded" : ""}`}>
+                            {!isSplitParent && editingCell?.id === t.id && editingCell?.field === "amount" ? (
+                              <input
+                                autoFocus
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={editingCell.value}
+                                onChange={(e) =>
+                                  setEditingCell((c) => c ? { ...c, value: e.target.value } : null)
                                 }
-                                handleUpdateField(t.id, "amount", e.currentTarget.value);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") e.currentTarget.blur();
-                                if (e.key === "Escape") {
-                                  cellEditCancelledRef.current = true;
-                                  setEditingCell(null);
-                                }
-                              }}
-                              className="bg-[#0A0F1E] border border-[#4F7FFF] rounded px-2 py-1 text-sm text-[#E8ECF4] w-24 text-right focus:outline-none"
-                            />
-                          ) : (
-                            <span
-                              className={`cursor-pointer hover:underline ${
-                                t.type === "income" ? "text-[#22C55E]" : "text-[#EF4444]"
-                              }`}
-                              onClick={() =>
-                                setEditingCell({ id: t.id, field: "amount", value: String(t.amount) })
-                              }
-                              title="Click to edit amount"
+                                onBlur={(e) => {
+                                  if (cellEditCancelledRef.current) {
+                                    cellEditCancelledRef.current = false;
+                                    return;
+                                  }
+                                  handleUpdateField(t.id, "amount", e.currentTarget.value);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") e.currentTarget.blur();
+                                  if (e.key === "Escape") {
+                                    cellEditCancelledRef.current = true;
+                                    setEditingCell(null);
+                                  }
+                                }}
+                                className="bg-[#0A0F1E] border border-[#4F7FFF] rounded px-2 py-1 text-sm text-[#E8ECF4] w-24 text-right focus:outline-none"
+                              />
+                            ) : (
+                              <span
+                                className={`${isSplitParent ? "cursor-default" : "cursor-pointer hover:underline"} ${
+                                  t.type === "income" ? "text-[#22C55E]" : "text-[#EF4444]"
+                                }`}
+                                onClick={() => {
+                                  if (!isSplitParent)
+                                    setEditingCell({ id: t.id, field: "amount", value: String(t.amount) });
+                                }}
+                                title={isSplitParent ? undefined : "Click to edit amount"}
+                              >
+                                {t.type === "income" ? "+" : "-"}
+                                {formatCurrency(Number(t.amount))}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Delete */}
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => handleDelete(t.id)}
+                              disabled={deletingId === t.id}
+                              className="p-1.5 rounded text-[#6B7A99] hover:text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors disabled:opacity-40"
+                              title={isSplitParent ? "Delete transaction and all splits" : "Delete transaction"}
                             >
-                              {t.type === "income" ? "+" : "-"}
-                              {formatCurrency(Number(t.amount))}
-                            </span>
-                          )}
-                        </td>
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
 
-                        {/* Delete */}
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => handleDelete(t.id)}
-                            disabled={deletingId === t.id}
-                            className="p-1.5 rounded text-[#6B7A99] hover:text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors disabled:opacity-40"
-                            title="Delete transaction"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
+                        {/* ── Split panel row ────────────────────────── */}
+                        {splitPanelTxId === t.id && (
+                          <tr className="border-b border-[#1E2A45]">
+                            <td colSpan={9} className="py-0">
+                              <SplitPanel
+                                transaction={t}
+                                onSave={(splits) => handleSaveSplit(t.id, splits)}
+                                onCancel={() => setSplitPanelTxId(null)}
+                                isSaving={isSplitting}
+                              />
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* ── Child rows (expanded split) ────────────── */}
+                        {isSplitParent && isExpanded && splitChildren.map((child, idx) => {
+                          const isLastChild = idx === splitChildren.length - 1;
+                          return (
+                            <tr
+                              key={child.id}
+                              className="border-b border-[#1E2A45] bg-[#A855F7]/5"
+                            >
+                              {/* Checkbox: empty */}
+                              <td className="px-3 py-2" />
+
+                              {/* Date: empty */}
+                              <td className="px-4 py-2" />
+
+                              {/* Account: split indicator */}
+                              <td className="px-4 py-2">
+                                <span className="text-xs text-[#A855F7]/70 whitespace-nowrap">
+                                  split {idx + 1}/{splitChildren.length}
+                                </span>
+                              </td>
+
+                              {/* Description: indented */}
+                              <td className="px-4 py-2 min-w-0">
+                                <div className="flex items-center gap-2 pl-4 border-l-2 border-[#A855F7]/40">
+                                  <span className="truncate text-sm text-[#6B7A99]" title={child.description}>
+                                    {child.description}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Category: editable */}
+                              <td className="px-4 py-2">
+                                <select
+                                  value={child.category}
+                                  onChange={(e) => handleCategoryChange(child.id, e.target.value)}
+                                  className="bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#4F7FFF] max-w-[150px]"
+                                >
+                                  <option value="Uncategorized">Uncategorized</option>
+                                  <optgroup label="── Income ──">
+                                    {INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                  </optgroup>
+                                  <optgroup label="── Expenses ──">
+                                    {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                  </optgroup>
+                                  <optgroup label="── Equity ──">
+                                    {EQUITY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                  </optgroup>
+                                  <optgroup label="── Liabilities ──">
+                                    {LIABILITY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                  </optgroup>
+                                  <optgroup label="── Transfers ──">
+                                    {TRANSFER_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                  </optgroup>
+                                  <optgroup label="── Fixed Assets (Advanced) ──">
+                                    {ASSET_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                  </optgroup>
+                                </select>
+                              </td>
+
+                              {/* Split column: empty for children */}
+                              <td className="px-2 py-2" />
+
+                              {/* Type */}
+                              <td className="px-4 py-2">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    child.type === "income"
+                                      ? "bg-[#22C55E]/10 text-[#22C55E]"
+                                      : "bg-[#EF4444]/10 text-[#EF4444]"
+                                  }`}
+                                >
+                                  {child.type === "income" ? "Income" : "Expense"}
+                                </span>
+                              </td>
+
+                              {/* Amount */}
+                              <td className="px-4 py-2 text-right font-medium whitespace-nowrap">
+                                <span className={child.type === "income" ? "text-[#22C55E]" : "text-[#EF4444]"}>
+                                  {child.type === "income" ? "+" : "-"}
+                                  {formatCurrency(Number(child.amount))}
+                                </span>
+                              </td>
+
+                              {/* Unsplit button on last child */}
+                              <td className="px-4 py-2 text-right">
+                                {isLastChild && (
+                                  <button
+                                    onClick={() => handleUnsplit(t.id)}
+                                    className="text-xs text-[#6B7A99] hover:text-[#EF4444] transition-colors whitespace-nowrap"
+                                    title="Remove split and restore original transaction"
+                                  >
+                                    × Unsplit
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </Fragment>
                     );
                   })}
                 </tbody>
