@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Pencil, Trash2, Plus, Building2, X } from "lucide-react";
+import { Pencil, Trash2, Plus, Building2, X, Link2, PencilLine, RefreshCw } from "lucide-react";
 import {
   createBankAccount,
   updateBankAccount,
@@ -10,6 +10,7 @@ import {
   getAccountSummary,
 } from "./actions";
 import type { AccountSummary } from "./actions";
+import PlaidLinkButton from "@/components/PlaidLinkButton";
 
 const TYPE_LABELS: Record<string, string> = {
   checking: "Checking",
@@ -36,6 +37,18 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${days}d ago`;
+}
+
 interface FormState {
   name: string;
   bank_name: string;
@@ -57,16 +70,19 @@ interface ToastState {
 
 interface Props {
   initialAccounts: AccountSummary[];
+  businessId: string;
 }
 
-export default function AccountsClient({ initialAccounts }: Props) {
+export default function AccountsClient({ initialAccounts, businessId }: Props) {
   const [accounts, setAccounts] = useState<AccountSummary[]>(initialAccounts);
   const [showForm, setShowForm] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   const showToast = (message: string, type: "success" | "error") => {
@@ -78,7 +94,7 @@ export default function AccountsClient({ initialAccounts }: Props) {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setFormError(null);
-    setShowForm(true);
+    setShowAddModal(true);
   };
 
   const openEdit = (acc: AccountSummary) => {
@@ -154,6 +170,45 @@ export default function AccountsClient({ initialAccounts }: Props) {
     setDeletingId(null);
   };
 
+  const handlePlaidSuccess = async (data: {
+    accountId?: string;
+    institutionName: string;
+    accountName: string;
+    accountMask: string;
+    accountSubtype: string;
+    plaidAccountId: string;
+    existingAccountId?: string;
+  }) => {
+    setShowAddModal(false);
+    const fresh = await getAccountSummary();
+    setAccounts(fresh);
+    showToast(
+      data.existingAccountId
+        ? "Bank connected successfully!"
+        : `${data.institutionName} account added!`,
+      "success"
+    );
+  };
+
+  const handleSync = async (accountId: string) => {
+    setSyncingId(accountId);
+    const res = await fetch("/api/plaid/sync-transactions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account_id: accountId }),
+    });
+    const data = await res.json();
+    setSyncingId(null);
+
+    if (data.success) {
+      showToast(`Synced! ${data.added} new transactions added.`, "success");
+      const fresh = await getAccountSummary();
+      setAccounts(fresh);
+    } else {
+      showToast("Sync failed. Please try again.", "error");
+    }
+  };
+
   const inputCls =
     "w-full bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4F7FFF] placeholder:text-[#6B7A99]";
 
@@ -174,7 +229,62 @@ export default function AccountsClient({ initialAccounts }: Props) {
         </button>
       </div>
 
-      {/* Inline form panel */}
+      {/* Add Account choice modal */}
+      {showAddModal && (
+        <div className="bg-[#111827] border border-[#1E2A45] rounded-xl p-6 mb-6">
+          <h3 className="font-syne font-bold text-lg text-[#E8ECF4] mb-2">Add Bank Account</h3>
+          <p className="text-sm text-[#6B7A99] mb-6">Connect your bank automatically or add manually.</p>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* Connect via Plaid */}
+            <div className="bg-[#0A0F1E] border border-[#1E2A45] hover:border-[#4F7FFF]/50 rounded-xl p-5 transition-colors">
+              <div className="w-10 h-10 rounded-lg bg-[#4F7FFF]/10 flex items-center justify-center mb-3">
+                <Link2 size={20} className="text-[#4F7FFF]" />
+              </div>
+              <h4 className="font-syne font-semibold text-[#E8ECF4] mb-1">Connect Bank</h4>
+              <p className="text-xs text-[#6B7A99] mb-4">
+                Sync transactions automatically via Plaid. Supports 12,000+ US banks.
+              </p>
+              <PlaidLinkButton
+                businessId={businessId}
+                onSuccess={handlePlaidSuccess}
+                onExit={() => setShowAddModal(false)}
+                buttonLabel="Connect via Plaid"
+                buttonClassName="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#4F7FFF] hover:bg-[#3D6FEF] text-white font-medium rounded-lg text-sm transition-colors"
+              />
+            </div>
+
+            {/* Add manually */}
+            <div className="bg-[#0A0F1E] border border-[#1E2A45] hover:border-[#4F7FFF]/50 rounded-xl p-5 transition-colors">
+              <div className="w-10 h-10 rounded-lg bg-[#6B7A99]/10 flex items-center justify-center mb-3">
+                <PencilLine size={20} className="text-[#6B7A99]" />
+              </div>
+              <h4 className="font-syne font-semibold text-[#E8ECF4] mb-1">Add Manually</h4>
+              <p className="text-xs text-[#6B7A99] mb-4">
+                Add account details manually and import transactions via CSV.
+              </p>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setShowForm(true);
+                }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-[#1E2A45] hover:border-[#4F7FFF]/50 text-[#E8ECF4] font-medium rounded-lg text-sm transition-colors"
+              >
+                Add manually
+              </button>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowAddModal(false)}
+            className="mt-4 text-sm text-[#6B7A99] hover:text-[#E8ECF4] transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Inline edit/add form panel */}
       <div
         className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
           showForm ? "max-h-[520px] opacity-100" : "max-h-0 opacity-0"
@@ -297,7 +407,6 @@ export default function AccountsClient({ initialAccounts }: Props) {
               href={`/dashboard/bookkeeping?account=${acc.id}`}
               className="block bg-[#111827] border border-[#1E2A45] rounded-xl p-5 hover:border-[#4F7FFF]/50 transition-colors group"
               onClick={(e) => {
-                // Prevent navigation if clicking action buttons
                 if ((e.target as HTMLElement).closest("[data-action]")) {
                   e.preventDefault();
                 }
@@ -310,6 +419,21 @@ export default function AccountsClient({ initialAccounts }: Props) {
                     {acc.bank_name}
                   </p>
                   <p className="text-sm text-[#6B7A99] mt-0.5">{acc.name}</p>
+
+                  {/* Plaid connected status */}
+                  {acc.is_plaid_connected && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="flex items-center gap-1 text-xs text-[#22C55E]">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#22C55E] animate-pulse" />
+                        Connected
+                      </span>
+                      {acc.plaid_last_synced_at && (
+                        <span className="text-xs text-[#6B7A99]">
+                          · Synced {formatRelativeTime(acc.plaid_last_synced_at)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1" data-action>
                   <button
@@ -377,6 +501,32 @@ export default function AccountsClient({ initialAccounts }: Props) {
                   {acc.net >= 0 ? "+" : ""}
                   {formatCurrency(acc.net)}
                 </p>
+              </div>
+
+              {/* Plaid sync / connect button */}
+              <div data-action className="mt-3">
+                {acc.is_plaid_connected ? (
+                  <button
+                    data-action
+                    onClick={() => handleSync(acc.id)}
+                    disabled={syncingId === acc.id}
+                    className="flex items-center gap-1.5 text-sm text-[#4F7FFF] hover:text-[#3D6FEF] transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      size={14}
+                      className={syncingId === acc.id ? "animate-spin" : ""}
+                    />
+                    {syncingId === acc.id ? "Syncing..." : "Sync now"}
+                  </button>
+                ) : (
+                  <PlaidLinkButton
+                    businessId={businessId}
+                    existingAccountId={acc.id}
+                    onSuccess={handlePlaidSuccess}
+                    buttonLabel="Connect to bank"
+                    buttonClassName="flex items-center gap-1.5 text-sm text-[#6B7A99] hover:text-[#4F7FFF] transition-colors"
+                  />
+                )}
               </div>
             </Link>
           ))}
