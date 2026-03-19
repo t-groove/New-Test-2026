@@ -3,12 +3,15 @@ import { plaidClient } from '@/lib/plaid/client'
 import { Products, CountryCode } from 'plaid'
 import { createClient } from '../../../../../supabase/server'
 
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  const body = await req.json().catch(() => ({}))
+  const { institution_id } = body as { institution_id?: string }
 
   try {
     const response = await plaidClient.linkTokenCreate({
@@ -17,8 +20,14 @@ export async function POST(_req: NextRequest) {
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
+      transactions: {
+        days_requested: 730,
+      },
       ...(process.env.NEXT_PUBLIC_SITE_URL && {
         redirect_uri: process.env.NEXT_PUBLIC_SITE_URL + '/dashboard/accounts',
+      }),
+      ...(institution_id && {
+        institution_id,
       }),
     })
 
