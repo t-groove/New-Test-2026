@@ -465,12 +465,14 @@ export default function SettingsClient({
                         className="border-b border-[#1E2A45] last:border-0 hover:bg-[#1E2A45]/20 transition-colors"
                       >
                         <td className="px-6 py-3">
-                          <div className="text-[#E8ECF4]">
-                            {member.full_name || member.email || member.invited_email || member.user_id.slice(0, 8)}
+                          <div>
+                            <p className="font-medium text-[#E8ECF4]">
+                              {member.display_name}
+                            </p>
+                            {member.email && member.email !== member.display_name && (
+                              <p className="text-xs text-[#6B7A99]">{member.email}</p>
+                            )}
                           </div>
-                          {member.full_name && (member.email ?? member.invited_email) && (
-                            <div className="text-xs text-[#6B7A99]">{member.email ?? member.invited_email}</div>
-                          )}
                         </td>
                         <td className="px-4 py-3">
                           <div>

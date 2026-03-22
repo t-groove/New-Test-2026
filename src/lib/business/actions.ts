@@ -48,6 +48,7 @@ export interface TeamMember {
   created_at: string;
   email: string | null;
   full_name: string | null;
+  display_name: string;
 }
 
 export interface BusinessInvitation {
@@ -683,11 +684,13 @@ export async function getTeamMembers(businessId: string): Promise<TeamMember[]> 
     ])
   );
 
-  return members.map((m) => ({
-    ...m,
-    email: userMap.get(m.user_id)?.email ?? m.invited_email ?? null,
-    full_name: userMap.get(m.user_id)?.full_name ?? null,
-  })) as TeamMember[];
+  return members.map((m) => {
+    const profile = userMap.get(m.user_id);
+    const email = profile?.email ?? m.invited_email ?? null;
+    const full_name = profile?.full_name ?? null;
+    const display_name = full_name ?? email ?? m.invited_email ?? m.user_id;
+    return { ...m, email, full_name, display_name };
+  }) as TeamMember[];
 }
 
 // ── getInvitations ─────────────────────────────────────────────────────────────

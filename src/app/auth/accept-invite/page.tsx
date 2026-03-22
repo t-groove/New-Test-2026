@@ -19,6 +19,7 @@ function AcceptInviteForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [fullName, setFullName] = useState("");
 
   const supabaseRef = useRef(createClient());
 
@@ -135,7 +136,33 @@ function AcceptInviteForm() {
       }
     }
 
-    // Step 3: Small delay to let Supabase replicate the membership before the
+    // Step 3: Save full name if provided.
+    // updateUser writes to auth metadata; the handle_user_update DB trigger
+    // propagates full_name to public.users automatically.
+    if (fullName.trim()) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      await supabase.auth.updateUser({
+        data: { full_name: fullName.trim() },
+      });
+
+      // Also upsert directly in case the trigger hasn't fired yet
+      await supabase
+        .from("users")
+        .upsert(
+          {
+            user_id: user?.id,
+            email: user?.email,
+            name: fullName.trim(),
+          },
+          { onConflict: "user_id" }
+        )
+        .select();
+    }
+
+    // Step 4: Small delay to let Supabase replicate the membership before the
     // server component runs its active-membership check, then redirect.
     await new Promise((resolve) => setTimeout(resolve, 500));
     window.location.href = "/dashboard";
@@ -203,6 +230,20 @@ function AcceptInviteForm() {
                   {role}
                 </span>
               </div>
+            </div>
+
+            {/* Full name */}
+            <div className="mb-4">
+              <label className="block text-sm text-[#6B7A99] mb-1.5">
+                Your full name
+              </label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Jane Smith"
+                className="w-full bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4F7FFF] placeholder:text-[#6B7A99]"
+              />
             </div>
 
             {/* Password form */}
