@@ -12,7 +12,8 @@ import {
 } from "@/lib/business/actions";
 import type { Business, TeamMember, BusinessInvitation } from "@/lib/business/actions";
 import { getProfile, updateProfile, uploadAvatar } from "./actions";
-import { Trash2, UserMinus, AlertTriangle, X, Crown, RotateCcw } from "lucide-react";
+import { Trash2, UserMinus, AlertTriangle, X, Crown, RotateCcw, Shield } from "lucide-react";
+import { createClient } from "../../../../supabase/client";
 
 // ── Role config ────────────────────────────────────────────────────────────────
 
@@ -462,6 +463,9 @@ export default function SettingsClient({
                 </a>
               </div>
             </div>
+
+            {/* MFA section */}
+            <MFASettings />
           </div>
         )}
 
@@ -919,6 +923,257 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
     <div>
       <label className="block text-xs text-[#6B7A99] mb-1.5">{label}</label>
       {children}
+    </div>
+  );
+}
+
+// ── MFA Settings ───────────────────────────────────────────────────────────────
+
+function MFASettings() {
+  const [factors, setFactors] = useState<{ id: string; status: string; friendly_name?: string; created_at: string }[]>([]);
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [secret, setSecret] = useState<string | null>(null);
+  const [factorId, setFactorId] = useState<string | null>(null);
+  const [verifyCode, setVerifyCode] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    loadFactors();
+  }, []);
+
+  const loadFactors = async () => {
+    const supabase = createClient();
+    const { data } = await supabase.auth.mfa.listFactors();
+    setFactors(data?.totp ?? []);
+  };
+
+  const handleEnroll = async () => {
+    setIsEnrolling(true);
+    setError('');
+
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: 'totp',
+      issuer: 'EZ Ledgr',
+      friendlyName: 'EZ Ledgr Authenticator',
+    });
+
+    if (error) {
+      setError(error.message);
+      setIsEnrolling(false);
+      return;
+    }
+
+    setQrCode(data.totp.qr_code);
+    setSecret(data.totp.secret);
+    setFactorId(data.id);
+    setIsEnrolling(false);
+  };
+
+  const handleVerifyEnrollment = async () => {
+    if (!factorId || verifyCode.length !== 6) return;
+
+    setIsVerifying(true);
+    setError('');
+
+    const supabase = createClient();
+
+    const { data: challengeData, error: challengeError } =
+      await supabase.auth.mfa.challenge({ factorId });
+
+    if (challengeError) {
+      setError(challengeError.message);
+      setIsVerifying(false);
+      return;
+    }
+
+    const { error: verifyError } = await supabase.auth.mfa.verify({
+      factorId,
+      challengeId: challengeData.id,
+      code: verifyCode,
+    });
+
+    if (verifyError) {
+      setError('Invalid code. Please check your app and try again.');
+      setVerifyCode('');
+      setIsVerifying(false);
+      return;
+    }
+
+    setQrCode(null);
+    setSecret(null);
+    setFactorId(null);
+    setVerifyCode('');
+    setSuccess('Two-factor authentication enabled successfully!');
+    await loadFactors();
+    setIsVerifying(false);
+  };
+
+  const handleUnenroll = async (id: string) => {
+    const supabase = createClient();
+    const { error } = await supabase.auth.mfa.unenroll({ factorId: id });
+    if (!error) {
+      setSuccess('Two-factor authentication disabled.');
+      await loadFactors();
+    }
+  };
+
+  const isEnabled = factors.some(f => f.status === 'verified');
+
+  return (
+    <div className="bg-[#111827] border border-[#1E2A45] rounded-xl p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <Shield size={18} className="text-[#4F7FFF]" />
+          <div>
+            <h3 className="font-syne font-semibold text-[#E8ECF4]">
+              Two-Factor Authentication
+            </h3>
+            <p className="text-sm text-[#6B7A99] mt-0.5">
+              Add an extra layer of security to your account
+            </p>
+          </div>
+        </div>
+        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+          isEnabled
+            ? 'bg-[#22C55E]/10 text-[#22C55E]'
+            : 'bg-[#6B7A99]/10 text-[#6B7A99]'
+        }`}>
+          {isEnabled ? '✓ Enabled' : 'Disabled'}
+        </span>
+      </div>
+
+      {success && (
+        <div className="bg-[#22C55E]/10 border border-[#22C55E]/30 rounded-lg px-4 py-3 mb-4">
+          <p className="text-sm text-[#22C55E]">{success}</p>
+        </div>
+      )}
+
+      {error && (
+        <p className="text-sm text-[#EF4444] mb-4">{error}</p>
+      )}
+
+      {/* Not enrolled — show enable button */}
+      {!isEnabled && !qrCode && (
+        <div>
+          <p className="text-sm text-[#6B7A99] mb-4">
+            Use an authenticator app like Google Authenticator or Authy to
+            generate one-time codes when signing in.
+          </p>
+          <button
+            onClick={handleEnroll}
+            disabled={isEnrolling}
+            className="bg-[#4F7FFF] hover:bg-[#3D6FEF] disabled:opacity-50
+              text-white font-medium rounded-lg px-5 py-2.5 text-sm transition-colors"
+          >
+            {isEnrolling ? 'Setting up...' : 'Enable 2FA'}
+          </button>
+        </div>
+      )}
+
+      {/* QR code enrollment step */}
+      {qrCode && (
+        <div>
+          <p className="text-sm text-[#E8ECF4] font-medium mb-2">
+            Step 1: Scan this QR code
+          </p>
+          <p className="text-sm text-[#6B7A99] mb-4">
+            Open Google Authenticator, Authy, or any TOTP app and scan the
+            QR code below.
+          </p>
+
+          <div className="bg-white p-4 rounded-lg inline-block mb-4">
+            <img src={qrCode} alt="MFA QR Code" className="w-48 h-48" />
+          </div>
+
+          <details className="mb-4">
+            <summary className="text-sm text-[#4F7FFF] cursor-pointer hover:underline">
+              Can&apos;t scan? Enter code manually
+            </summary>
+            <div className="mt-2 bg-[#0A0F1E] border border-[#1E2A45] rounded-lg px-3 py-2">
+              <p className="text-xs text-[#6B7A99] mb-1">Manual entry key:</p>
+              <p className="font-mono text-sm text-[#E8ECF4] break-all">{secret}</p>
+            </div>
+          </details>
+
+          <p className="text-sm text-[#E8ECF4] font-medium mb-2">
+            Step 2: Enter the 6-digit code
+          </p>
+          <p className="text-sm text-[#6B7A99] mb-3">
+            Enter the code shown in your authenticator app to verify setup.
+          </p>
+
+          <div className="flex gap-3">
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={verifyCode}
+              onChange={e => setVerifyCode(e.target.value.replace(/[^0-9]/g, ''))}
+              placeholder="000000"
+              className="bg-[#0A0F1E] border border-[#1E2A45] text-[#E8ECF4]
+                rounded-lg px-4 py-2.5 text-center font-mono tracking-widest
+                text-lg focus:outline-none focus:ring-2 focus:ring-[#4F7FFF] w-40"
+            />
+            <button
+              onClick={handleVerifyEnrollment}
+              disabled={verifyCode.length !== 6 || isVerifying}
+              className="bg-[#4F7FFF] hover:bg-[#3D6FEF] disabled:opacity-50
+                text-white font-medium rounded-lg px-5 py-2.5 text-sm transition-colors"
+            >
+              {isVerifying ? 'Verifying...' : 'Verify & Enable'}
+            </button>
+          </div>
+
+          <button
+            onClick={() => {
+              setQrCode(null);
+              setSecret(null);
+              setFactorId(null);
+            }}
+            className="text-sm text-[#6B7A99] hover:text-[#E8ECF4] transition-colors mt-3 block"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Enrolled — show disable option */}
+      {isEnabled && !qrCode && (
+        <div>
+          <p className="text-sm text-[#6B7A99] mb-4">
+            Your account is protected with two-factor authentication. You&apos;ll
+            need your authenticator app each time you sign in.
+          </p>
+          {factors
+            .filter(f => f.status === 'verified')
+            .map(factor => (
+              <div
+                key={factor.id}
+                className="flex items-center justify-between bg-[#0A0F1E]
+                  border border-[#1E2A45] rounded-lg px-4 py-3 mb-3"
+              >
+                <div>
+                  <p className="text-sm text-[#E8ECF4] font-medium">
+                    {factor.friendly_name ?? 'Authenticator App'}
+                  </p>
+                  <p className="text-xs text-[#6B7A99]">
+                    Added {new Date(factor.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleUnenroll(factor.id)}
+                  className="text-sm text-[#EF4444] hover:underline transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

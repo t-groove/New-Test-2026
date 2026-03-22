@@ -40,14 +40,30 @@ export const updateSession = async (request: NextRequest) => {
 
     // This will refresh session if expired - required for Server Components
     // https://supabase.com/docs/guides/auth/server-side/nextjs
-    const { error } = await supabase.auth.getUser();
+    const { data: { user }, error } = await supabase.auth.getUser();
+
+    const pathname = request.nextUrl.pathname;
+
+    // /auth/mfa is accessible to aal1 users (logged in but MFA not yet completed)
+    if (pathname === "/auth/mfa") {
+      if (error || !user) {
+        // Not logged in at all — send to sign-in
+        return NextResponse.redirect(new URL("/sign-in", request.url));
+      }
+      // Check if already fully authenticated (aal2) — redirect to dashboard
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal?.currentLevel === 'aal2') {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
+      return response;
+    }
 
     // protected routes
-    if (request.nextUrl.pathname.startsWith("/dashboard") && error) {
+    if (pathname.startsWith("/dashboard") && error) {
       return NextResponse.redirect(new URL("/sign-in", request.url));
     }
 
-    if (request.nextUrl.pathname === "/" && !error) {
+    if (pathname === "/" && !error) {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
 

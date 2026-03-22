@@ -90,6 +90,12 @@ export const signInAction = async (formData: FormData) => {
     return encodedRedirect("error", errorPath, error.message);
   }
 
+  // Check if MFA is required
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal?.nextLevel === 'aal2' && aal?.nextLevel !== aal?.currentLevel) {
+    return redirect('/auth/mfa');
+  }
+
   return redirect(redirectTo);
 };
 
