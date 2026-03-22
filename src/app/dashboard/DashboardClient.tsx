@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import type { AccountSummary } from "./accounts/actions";
 import { createBusiness } from "@/lib/business/actions";
-import { createClient } from "../../../supabase/client";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -227,150 +226,6 @@ function OnboardingCard() {
   );
 }
 
-// ── Pending Invitation Banner ──────────────────────────────────────────────────
-
-interface PendingInvitation {
-  id: string;
-  business_id: string;
-  business_name: string;
-  role: string;
-}
-
-function PendingInvitationsBanner({
-  invitations,
-}: {
-  invitations: PendingInvitation[];
-}) {
-  const [localInvites, setLocalInvites] = useState<PendingInvitation[]>(invitations);
-  const [dismissed, setDismissed] = useState<string[]>([]);
-  const [working, setWorking] = useState<string | null>(null);
-  const [acceptError, setAcceptError] = useState<string | null>(null);
-  const [joined, setJoined] = useState<string | null>(null);
-
-  const visible = localInvites.filter((inv) => !dismissed.includes(inv.id));
-  if (visible.length === 0 && !joined) return null;
-
-  async function handleAccept(inv: PendingInvitation) {
-    setWorking(inv.id);
-    setAcceptError(null);
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setAcceptError("Not authenticated. Please refresh and try again.");
-      setWorking(null);
-      return;
-    }
-
-    const { error: memberError } = await supabase
-      .from("business_members")
-      .update({ is_active: true, accepted_at: new Date().toISOString() })
-      .eq("id", inv.id)
-      .eq("user_id", user.id);
-
-    if (memberError) {
-      console.error("Member activation error:", memberError);
-      setAcceptError("Failed to accept invitation. Please try again.");
-      setWorking(null);
-      return;
-    }
-
-    await supabase
-      .from("business_invitations")
-      .update({ accepted_at: new Date().toISOString() })
-      .eq("business_id", inv.business_id)
-      .eq("invited_email", user.email?.toLowerCase());
-
-    setLocalInvites((prev) => prev.filter((p) => p.id !== inv.id));
-    setJoined(inv.business_name);
-    setWorking(null);
-
-    // Full reload so the server re-runs getCurrentBusinessId and picks up the new active membership
-    setTimeout(() => {
-      window.location.reload();
-    }, 1500);
-  }
-
-  async function handleDecline(inv: PendingInvitation) {
-    setWorking(inv.id);
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      await supabase
-        .from("business_members")
-        .delete()
-        .eq("business_id", inv.business_id)
-        .eq("user_id", user.id)
-        .eq("is_active", false);
-    }
-    setDismissed((prev) => [...prev, inv.id]);
-    setWorking(null);
-  }
-
-  return (
-    <div className="flex flex-col gap-2 mb-6">
-      {joined && (
-        <div
-          className="rounded-lg px-4 py-3"
-          style={{
-            backgroundColor: "rgba(34,197,94,0.08)",
-            border: "1px solid rgba(34,197,94,0.25)",
-          }}
-        >
-          <p className="text-sm" style={{ color: "#22C55E" }}>
-            ✓ Welcome! You have joined <strong>{joined}</strong>. Loading your dashboard…
-          </p>
-        </div>
-      )}
-      {acceptError && (
-        <p className="text-sm text-[#EF4444] bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg px-3 py-2">
-          {acceptError}
-        </p>
-      )}
-      {visible.map((inv) => (
-        <div
-          key={inv.id}
-          className="rounded-lg px-4 py-3 flex items-center justify-between gap-4"
-          style={{
-            backgroundColor: "rgba(79,127,255,0.08)",
-            border: "1px solid rgba(79,127,255,0.25)",
-          }}
-        >
-          <p className="text-sm" style={{ color: "#B8C7E8" }}>
-            <span className="mr-2">📬</span>
-            You have a pending invitation to join{" "}
-            <strong style={{ color: "#E8ECF4" }}>{inv.business_name}</strong>{" "}
-            as{" "}
-            <strong style={{ color: "#E8ECF4" }}>{inv.role}</strong>
-          </p>
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <button
-              onClick={() => handleAccept(inv)}
-              disabled={working === inv.id}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity disabled:opacity-50"
-              style={{ backgroundColor: "#22C55E", color: "#ffffff" }}
-            >
-              {working === inv.id ? "Joining…" : "Accept →"}
-            </button>
-            <button
-              onClick={() => handleDecline(inv)}
-              disabled={working === inv.id}
-              className="text-xs hover:underline disabled:opacity-50"
-              style={{ color: "#6B7A99" }}
-            >
-              Decline
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -383,7 +238,6 @@ interface Props {
   userName: string;
   currentYear: number;
   hasBusiness: boolean;
-  pendingInvitations: PendingInvitation[];
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -398,15 +252,9 @@ export default function DashboardClient({
   userName,
   currentYear,
   hasBusiness,
-  pendingInvitations,
 }: Props) {
   if (!hasBusiness) {
-    return (
-      <>
-        <PendingInvitationsBanner invitations={pendingInvitations} />
-        {pendingInvitations.length === 0 && <OnboardingCard />}
-      </>
-    );
+    return <OnboardingCard />;
   }
 
   const today = new Date();
@@ -417,9 +265,6 @@ export default function DashboardClient({
 
   return (
     <div className="flex flex-col gap-10">
-      {/* ── Pending invitation banner ────────────────────────────────────── */}
-      <PendingInvitationsBanner invitations={pendingInvitations} />
-
       {/* ── Page header ─────────────────────────────────────────────────── */}
       <header>
         <h1 className="font-syne text-3xl font-bold text-[#E8ECF4]">

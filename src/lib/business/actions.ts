@@ -438,7 +438,7 @@ export async function inviteTeamMember(
                 Click the button below to set up your password and get started.
               </p>
               <a href="${inviteUrl}" style="display:inline-block;background:#4F7FFF;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:8px;">
-                Accept Invitation
+                Accept Invitation &amp; Set Up Account →
               </a>
             </td>
           </tr>
