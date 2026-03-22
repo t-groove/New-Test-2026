@@ -16,6 +16,15 @@ export default async function DashboardPage() {
     redirect("/sign-in");
   }
 
+  // ── Diagnostic: log membership state for debugging invite issues ──────────
+  const { data: memberships } = await supabase
+    .from("business_members")
+    .select("*")
+    .eq("user_id", user.id);
+  console.log("Current user:", user.id, user.email);
+  console.log("All memberships:", JSON.stringify(memberships));
+  // ─────────────────────────────────────────────────────────────────────────
+
   const businessId = await getCurrentBusinessId(supabase);
 
   // No active business — check whether user has any membership at all before

@@ -129,22 +129,47 @@ function AcceptInviteForm() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      await supabase
+      const { error: memberError } = await supabase
         .from("business_members")
         .update({
           is_active: true,
           accepted_at: new Date().toISOString(),
         })
         .eq("business_id", businessId)
-        .eq("user_id", user?.id);
+        .eq("user_id", user?.id ?? "");
 
+      if (memberError) {
+        console.error("Membership activation failed:", memberError);
+        // Try upsert as fallback (handles cases where the row doesn't yet exist)
+        await supabase
+          .from("business_members")
+          .upsert(
+            {
+              business_id: businessId,
+              user_id: user?.id,
+              role: role,
+              is_active: true,
+              accepted_at: new Date().toISOString(),
+            },
+            { onConflict: "business_id,user_id" }
+          );
+      }
+
+      // Verify activation succeeded (visible in Vercel logs)
+      const { data: verify } = await supabase
+        .from("business_members")
+        .select("is_active")
+        .eq("business_id", businessId)
+        .eq("user_id", user?.id ?? "")
+        .single();
+      console.log("Membership after activation:", verify);
+
+      // Mark invitation as accepted
       await supabase
         .from("business_invitations")
-        .update({
-          accepted_at: new Date().toISOString(),
-        })
+        .update({ accepted_at: new Date().toISOString() })
         .eq("business_id", businessId)
-        .eq("invited_email", user?.email?.toLowerCase());
+        .eq("invited_email", user?.email?.toLowerCase() ?? "");
     }
 
     // Step 3: Small delay to let Supabase replicate the membership before the

@@ -116,6 +116,18 @@ export default function SettingsClient({
     });
   }
 
+  // ── Status helper ──────────────────────────────────────────────────────────
+  function getStatus(member: TeamMember) {
+    if (member.is_active && member.accepted_at) {
+      return { label: "Active", color: "text-[#22C55E]" };
+    }
+    if (!member.is_active) {
+      return { label: "Pending", color: "text-[#F59E0B]" };
+    }
+    // is_active=true but no accepted_at — treat as active
+    return { label: "Active", color: "text-[#22C55E]" };
+  }
+
   // ── Team tab state ─────────────────────────────────────────────────────────
   const [members, setMembers] = useState<TeamMember[]>(initialMembers);
   const [invitations, setInvitations] = useState<BusinessInvitation[]>(initialInvitations);
@@ -476,11 +488,10 @@ export default function SettingsClient({
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {member.accepted_at ? (
-                            <span className="text-xs text-[#22C55E]">Active</span>
-                          ) : (
-                            <span className="text-xs text-[#F59E0B]">Pending</span>
-                          )}
+                          {(() => {
+                            const s = getStatus(member);
+                            return <span className={`text-xs ${s.color}`}>{s.label}</span>;
+                          })()}
                         </td>
                         {isOwner && (
                           <td className="px-6 py-3 text-right">
