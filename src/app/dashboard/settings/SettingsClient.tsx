@@ -466,10 +466,10 @@ export default function SettingsClient({
                       >
                         <td className="px-6 py-3">
                           <div className="text-[#E8ECF4]">
-                            {member.full_name || member.email || member.user_id.slice(0, 8)}
+                            {member.full_name || member.email || member.invited_email || member.user_id.slice(0, 8)}
                           </div>
-                          {member.full_name && member.email && (
-                            <div className="text-xs text-[#6B7A99]">{member.email}</div>
+                          {member.full_name && (member.email ?? member.invited_email) && (
+                            <div className="text-xs text-[#6B7A99]">{member.email ?? member.invited_email}</div>
                           )}
                         </td>
                         <td className="px-4 py-3">

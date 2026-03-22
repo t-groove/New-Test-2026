@@ -161,7 +161,14 @@ export async function activateMembership(
 
   console.log("Activating membership for:", user.id, "business:", businessId);
 
-  const { error: memberError } = await supabase
+  // Use admin client for both writes:
+  // - business_members: the invited user is not yet active, so the RLS policy
+  //   "Owners can manage their business members" blocks a regular client update.
+  //   Migration 012 adds an UPDATE policy for own rows, but admin is belt-and-suspenders.
+  // - business_invitations: only owners can UPDATE via RLS; admin bypasses that.
+  const adminClient = createAdminClient();
+
+  const { error: memberError } = await adminClient
     .from("business_members")
     .update({
       is_active: true,
@@ -175,7 +182,7 @@ export async function activateMembership(
     return { success: false, error: memberError.message };
   }
 
-  await supabase
+  await adminClient
     .from("business_invitations")
     .update({ accepted_at: new Date().toISOString() })
     .eq("business_id", businessId)
@@ -659,9 +666,12 @@ export async function getTeamMembers(businessId: string): Promise<TeamMember[]> 
 
   if (error || !members) return [];
 
-  // Enrich with emails from the public users table
+  // Use the admin client to fetch user profiles — the public.users RLS policy
+  // ("Users can view own data") only allows each user to see their own row,
+  // so a regular authenticated query returns nothing for other team members.
+  const adminClient = createAdminClient();
   const userIds = members.map((m) => m.user_id);
-  const { data: users } = await supabase
+  const { data: users } = await adminClient
     .from("users")
     .select("user_id, email, full_name")
     .in("user_id", userIds);
@@ -694,6 +704,7 @@ export async function getInvitations(businessId: string): Promise<BusinessInvita
     .select("*")
     .eq("business_id", businessId)
     .is("accepted_at", null)
+    .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false });
 
   if (error || !data) return [];
