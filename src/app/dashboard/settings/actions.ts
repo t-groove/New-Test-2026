@@ -46,14 +46,12 @@ export async function updateProfile(profileData: {
       user_id: user.id,
       email: user.email,
       name: profileData.name,
-      full_name: profileData.name,
       phone: profileData.phone ?? "",
       job_title: profileData.job_title ?? "",
       timezone: profileData.timezone ?? "America/New_York",
       updated_at: new Date().toISOString(),
-      token_identifier: user.email,
     },
-    { onConflict: "user_id" }
+    { onConflict: "user_id", ignoreDuplicates: false }
   );
 
   if (error) return { success: false, error: error.message };
@@ -90,7 +88,6 @@ export async function uploadAvatar(base64: string, contentType: string) {
       user_id: user.id,
       avatar_url: publicUrl,
       updated_at: new Date().toISOString(),
-      token_identifier: user.email,
     },
     { onConflict: "user_id" }
   );
