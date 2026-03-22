@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   updateBusiness,
@@ -11,6 +11,7 @@ import {
   deleteBusiness,
 } from "@/lib/business/actions";
 import type { Business, TeamMember, BusinessInvitation } from "@/lib/business/actions";
+import { getProfile, updateProfile, uploadAvatar } from "./actions";
 import { Trash2, UserMinus, AlertTriangle, X, Crown, RotateCcw } from "lucide-react";
 
 // ── Role config ────────────────────────────────────────────────────────────────
@@ -40,6 +41,15 @@ const ASSIGNABLE_ROLES = ["owner", "accountant", "bookkeeper", "readonly"];
 const ENTITY_TYPES = [
   "LLC", "S-Corp", "C-Corp", "Sole Proprietor",
   "Partnership", "Non-Profit", "Other",
+];
+
+const TIMEZONES = [
+  { value: "America/New_York", label: "Eastern Time (ET)" },
+  { value: "America/Chicago", label: "Central Time (CT)" },
+  { value: "America/Denver", label: "Mountain Time (MT)" },
+  { value: "America/Los_Angeles", label: "Pacific Time (PT)" },
+  { value: "America/Anchorage", label: "Alaska Time (AKT)" },
+  { value: "Pacific/Honolulu", label: "Hawaii Time (HT)" },
 ];
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -76,7 +86,7 @@ export default function SettingsClient({
   currentUserId,
 }: Props) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"profile" | "team" | "danger">("profile");
+  const [activeTab, setActiveTab] = useState<"personal" | "business" | "team" | "danger">("personal");
 
   // Toast state
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -85,7 +95,66 @@ export default function SettingsClient({
     setTimeout(() => setToast(null), 3500);
   }
 
-  // ── Profile tab state ──────────────────────────────────────────────────────
+  // ── Personal Profile tab state ─────────────────────────────────────────────
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [timezone, setTimezone] = useState("America/New_York");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    getProfile().then((profile) => {
+      if (profile) {
+        setName(profile.name);
+        setEmail(profile.email);
+        setPhone(profile.phone);
+        setJobTitle(profile.job_title);
+        setTimezone(profile.timezone);
+        setAvatarUrl(profile.avatar_url);
+      }
+    });
+  }, []);
+
+  async function handleSaveProfile() {
+    setIsSaving(true);
+    const result = await updateProfile({
+      name,
+      phone,
+      job_title: jobTitle,
+      timezone,
+    });
+    if (result.success) {
+      showToast("Profile updated successfully");
+    } else {
+      showToast(result.error ?? "Failed to save profile", "error");
+    }
+    setIsSaving(false);
+  }
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      showToast("Image must be under 2MB", "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const base64 = (ev.target?.result as string).split(",")[1];
+      const result = await uploadAvatar(base64, file.type);
+      if (result.success && result.url) {
+        setAvatarUrl(result.url);
+        showToast("Photo updated!");
+      } else {
+        showToast("Failed to upload photo", "error");
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ── Business Profile tab state ─────────────────────────────────────────────
   const [profileForm, setProfileForm] = useState({
     name: business.name ?? "",
     entity_type: business.entity_type ?? "LLC",
@@ -124,7 +193,6 @@ export default function SettingsClient({
     if (!member.is_active) {
       return { label: "Pending", color: "text-[#F59E0B]" };
     }
-    // is_active=true but no accepted_at — treat as active
     return { label: "Active", color: "text-[#22C55E]" };
   }
 
@@ -146,7 +214,6 @@ export default function SettingsClient({
       if (result.success) {
         showToast(`Invitation sent to ${inviteEmail.trim()}.`);
         setInviteEmail("");
-        // Refresh invitations
         router.refresh();
       } else {
         showToast(result.error ?? "Failed to send invitation.", "error");
@@ -196,7 +263,6 @@ export default function SettingsClient({
 
   function handleResendInvite(inv: BusinessInvitation) {
     startMemberTransition(async () => {
-      // Cancel the existing invite so the duplicate check won't block re-send
       await cancelInvitation(inv.id);
       setInvitations((list) => list.filter((i) => i.id !== inv.id));
       const result = await inviteTeamMember(business.id, inv.invited_email, inv.role);
@@ -249,6 +315,8 @@ export default function SettingsClient({
         : "text-[#6B7A99] hover:text-[#E8ECF4]"
     }`;
 
+  const avatarInitial = (name || email).charAt(0).toUpperCase();
+
   return (
     <>
       {toast && <Toast message={toast.message} type={toast.type} />}
@@ -261,8 +329,11 @@ export default function SettingsClient({
         </div>
 
         {/* Tab switcher */}
-        <div className="flex gap-2">
-          <button className={tabClass("profile")} onClick={() => setActiveTab("profile")}>
+        <div className="flex gap-2 flex-wrap">
+          <button className={tabClass("personal")} onClick={() => setActiveTab("personal")}>
+            Profile
+          </button>
+          <button className={tabClass("business")} onClick={() => setActiveTab("business")}>
             Business Profile
           </button>
           <button className={tabClass("team")} onClick={() => setActiveTab("team")}>
@@ -275,8 +346,127 @@ export default function SettingsClient({
           )}
         </div>
 
-        {/* ── Profile Tab ─────────────────────────────────────────────────── */}
-        {activeTab === "profile" && (
+        {/* ── Personal Profile Tab ─────────────────────────────────────────── */}
+        {activeTab === "personal" && (
+          <div className="space-y-6 max-w-xl">
+
+            {/* Avatar section */}
+            <div className="bg-[#111827] border border-[#1E2A45] rounded-xl p-6">
+              <h3 className="font-syne font-semibold text-[#E8ECF4] mb-4">Profile Photo</h3>
+              <div className="flex items-center gap-5">
+                <div className="w-20 h-20 rounded-full bg-[#1E2A45] flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-2xl font-bold text-[#6B7A99]">{avatarInitial}</span>
+                  )}
+                </div>
+                <div>
+                  <label className="cursor-pointer">
+                    <span className="bg-[#1E2A45] hover:bg-[#4F7FFF]/20 text-[#E8ECF4] px-4 py-2 rounded-lg text-sm transition-colors inline-block">
+                      Upload photo
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleAvatarUpload}
+                    />
+                  </label>
+                  <p className="text-xs text-[#6B7A99] mt-1.5">JPG, PNG or WebP. Max 2MB.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Personal information form */}
+            <div className="bg-[#111827] border border-[#1E2A45] rounded-xl p-6">
+              <h3 className="font-syne font-semibold text-[#E8ECF4] mb-5">Personal Information</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-[#6B7A99] mb-1.5">Full name</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="input-style"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-[#6B7A99] mb-1.5">Email address</label>
+                  <input
+                    type="email"
+                    value={email}
+                    readOnly
+                    className="input-style opacity-60 cursor-not-allowed"
+                  />
+                  <p className="text-xs text-[#6B7A99] mt-1">Email cannot be changed</p>
+                </div>
+                <div>
+                  <label className="block text-sm text-[#6B7A99] mb-1.5">Phone number</label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+1 (555) 000-0000"
+                    className="input-style"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-[#6B7A99] mb-1.5">Job title</label>
+                  <input
+                    type="text"
+                    value={jobTitle}
+                    onChange={(e) => setJobTitle(e.target.value)}
+                    placeholder="e.g. Owner, CFO, Bookkeeper"
+                    className="input-style"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-[#6B7A99] mb-1.5">Timezone</label>
+                  <select
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    className="input-style"
+                  >
+                    {TIMEZONES.map((tz) => (
+                      <option key={tz.value} value={tz.value}>
+                        {tz.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="pt-2">
+                  <button
+                    onClick={handleSaveProfile}
+                    disabled={isSaving}
+                    className="bg-[#4F7FFF] hover:bg-[#3D6FEF] disabled:opacity-50 text-white font-medium rounded-lg px-6 py-2.5 text-sm transition-colors"
+                  >
+                    {isSaving ? "Saving..." : "Save changes"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Password section */}
+            <div className="bg-[#111827] border border-[#1E2A45] rounded-xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-syne font-semibold text-[#E8ECF4]">Password</h3>
+                  <p className="text-sm text-[#6B7A99] mt-0.5">Update your account password</p>
+                </div>
+                <a
+                  href="/dashboard/change-password"
+                  className="text-sm text-[#4F7FFF] hover:underline"
+                >
+                  Change password →
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Business Profile Tab ─────────────────────────────────────────── */}
+        {activeTab === "business" && (
           <div className="bg-[#111827] border border-[#1E2A45] rounded-xl p-6 max-w-xl">
             <h2 className="font-syne text-lg font-semibold text-[#E8ECF4] mb-5">
               Business Profile
@@ -696,7 +886,7 @@ export default function SettingsClient({
         )}
       </div>
 
-      {/* Inline styles for form inputs (avoids repeating Tailwind strings) */}
+      {/* Inline styles for form inputs */}
       <style>{`
         .input-style {
           width: 100%;

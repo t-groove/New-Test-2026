@@ -36,3 +36,17 @@ This adds an `account_type` column (`Income`, `Expense`, `Asset`, `Equity`, or `
 3. Click "Run"
 
 This creates the `journal_entries` and `journal_entry_lines` tables for recording non-cash accounting adjustments (depreciation, amortization, accruals, etc.). Row Level Security is enabled so each user can only access their own entries.
+
+## Migration 013 — User profile fields
+
+Run `migrations/013_user_profiles.sql` in the SQL Editor. This adds `phone`, `job_title`, and `timezone` columns to the existing `public.users` table, and creates UPDATE/INSERT RLS policies so users can save their own profile.
+
+## Storage bucket — avatars
+
+After running migration 013, create the avatars storage bucket **manually** in the Supabase dashboard:
+
+1. Supabase → **Storage** → **New bucket**
+2. Name: `avatars`
+3. Public: **YES** (so avatar image URLs work without auth tokens)
+
+Without this bucket, avatar uploads will fail silently.

@@ -20,6 +20,7 @@ export default function DashboardNavbar() {
   const supabase = createClient()
   const router = useRouter()
   const [email, setEmail] = useState<string | null>(null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [businessDropdownOpen, setBusinessDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -28,7 +29,18 @@ export default function DashboardNavbar() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? null)
+      const user = data.user
+      if (!user) return
+      setEmail(user.email ?? null)
+      // Fetch avatar from public.users
+      supabase
+        .from('users')
+        .select('avatar_url')
+        .eq('user_id', user.id)
+        .maybeSingle()
+        .then(({ data: row }) => {
+          if (row?.avatar_url) setAvatarUrl(row.avatar_url)
+        })
     })
   }, [])
 
@@ -149,7 +161,15 @@ export default function DashboardNavbar() {
               size="icon"
               className="text-[#6B7A99] hover:text-[#E8ECF4] hover:bg-[#1E2A45]"
             >
-              <UserCircle className="h-6 w-6" />
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="Profile"
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+              ) : (
+                <UserCircle className="h-6 w-6" />
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
