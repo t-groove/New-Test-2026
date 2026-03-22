@@ -17,11 +17,11 @@ export async function getProfile() {
 
   return {
     email: user.email ?? "",
-    name: data?.name ?? user.user_metadata?.full_name ?? "",
+    name: data?.name ?? data?.full_name ?? user.user_metadata?.full_name ?? "",
     phone: data?.phone ?? "",
     job_title: data?.job_title ?? "",
     timezone: data?.timezone ?? "America/New_York",
-    avatar_url: data?.avatar_url ?? null,
+    avatar_url: data?.avatar_url ?? data?.image ?? null,
   };
 }
 
@@ -44,14 +44,16 @@ export async function updateProfile(profileData: {
   const { error } = await supabase.from("users").upsert(
     {
       user_id: user.id,
+      token_identifier: user.id,
       email: user.email,
       name: profileData.name,
+      full_name: profileData.name,
       phone: profileData.phone ?? "",
       job_title: profileData.job_title ?? "",
       timezone: profileData.timezone ?? "America/New_York",
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "user_id", ignoreDuplicates: false }
+    { onConflict: "user_id" }
   );
 
   if (error) return { success: false, error: error.message };
@@ -86,7 +88,10 @@ export async function uploadAvatar(base64: string, contentType: string) {
   await supabase.from("users").upsert(
     {
       user_id: user.id,
+      token_identifier: user.id,
+      email: user.email,
       avatar_url: publicUrl,
+      image: publicUrl,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id" }
